@@ -1,13 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import {
-  Database,
-  Menu,
-  PanelLeftClose,
-  PanelLeft,
-  X,
-} from "lucide-react";
+import { Database, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConnectionStatus } from "@/components/database/connection-status";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -20,7 +14,6 @@ interface DashboardShellProps {
 
 export function DashboardShell({ sidebar, children }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -49,20 +42,6 @@ export function DashboardShell({ sidebar, children }: DashboardShellProps) {
         </div>
 
         <ThemeToggle />
-
-        <Button
-          variant="ghost"
-          size="icon"
-          className="hidden lg:flex"
-          onClick={() => setSidebarCollapsed((c) => !c)}
-          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {sidebarCollapsed ? (
-            <PanelLeft className="h-4 w-4" />
-          ) : (
-            <PanelLeftClose className="h-4 w-4" />
-          )}
-        </Button>
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -78,8 +57,7 @@ export function DashboardShell({ sidebar, children }: DashboardShellProps) {
         <aside
           className={cn(
             "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-sidebar pt-11 transition-transform duration-200 lg:static lg:w-56 lg:pt-0 lg:translate-x-0 xl:w-60",
-            sidebarOpen ? "translate-x-0" : "-translate-x-full",
-            sidebarCollapsed && "lg:w-0 lg:overflow-hidden lg:border-r-0"
+            sidebarOpen ? "translate-x-0" : "-translate-x-full"
           )}
         >
           <div className="flex items-center justify-between border-b border-border px-3 py-2 lg:hidden">

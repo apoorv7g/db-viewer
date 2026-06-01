@@ -56,8 +56,12 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
   const [pageSize, setPageSize] = useState<number>(50);
   const [sortColumn, setSortColumn] = useState<string | undefined>();
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [filterColumn, setFilterColumn] = useState("");
+  const [filterField, setFilterField] = useState("");
   const [filterValue, setFilterValue] = useState("");
+  const [appliedFilter, setAppliedFilter] = useState<{
+    field: string;
+    value: string;
+  } | null>(null);
   const [selectedRows, setSelectedRows] = useState<Record<string, unknown>[]>([]);
   const [editRow, setEditRow] = useState<Record<string, unknown> | null>(null);
   const [insertOpen, setInsertOpen] = useState(false);
@@ -86,8 +90,8 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
       pageSize,
       sortColumn,
       sortDirection,
-      filterColumn,
-      filterValue,
+      appliedFilter?.field,
+      appliedFilter?.value,
     ],
     queryFn: () => {
       const params = new URLSearchParams({
@@ -97,9 +101,9 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         sortDirection,
       });
       if (sortColumn) params.set("sortColumn", sortColumn);
-      if (filterColumn && filterValue) {
-        params.set("filterColumn", filterColumn);
-        params.set("filterValue", filterValue);
+      if (appliedFilter?.field && appliedFilter.value) {
+        params.set("filterColumn", appliedFilter.field);
+        params.set("filterValue", appliedFilter.value);
       }
       return apiFetch<PaginatedData>(
         `/api/tables/${encodeURIComponent(tableName)}/data?${params}`
@@ -364,6 +368,23 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
   const total = dataQuery.data?.total ?? 0;
   const totalPages = Math.ceil(total / pageSize);
 
+  const applyFilter = () => {
+    const value = filterValue.trim();
+    if (!filterField || !value) {
+      toast.error("Choose a field and enter a value to filter");
+      return;
+    }
+    setAppliedFilter({ field: filterField, value });
+    setPage(1);
+  };
+
+  const clearFilter = () => {
+    setFilterField("");
+    setFilterValue("");
+    setAppliedFilter(null);
+    setPage(1);
+  };
+
   return (
     <div className="flex h-full flex-col">
       <div className="shrink-0 border-b border-border bg-card">
@@ -371,11 +392,16 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
           <button
             type="button"
             className="studio-toolbar-btn"
-            data-active={filtersOpen}
+            data-active={filtersOpen || !!appliedFilter}
             onClick={() => setFiltersOpen((o) => !o)}
           >
             <Filter className="h-3.5 w-3.5" />
             Filters
+            {appliedFilter ? (
+              <span className="max-w-32 truncate text-primary">
+                ({appliedFilter.field} = {appliedFilter.value})
+              </span>
+            ) : null}
           </button>
 
           {!readOnly && (
@@ -465,11 +491,14 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         {filtersOpen && (
           <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
             <Select
-              value={filterColumn}
-              onChange={(e) => setFilterColumn(e.target.value)}
-              className="h-8 w-40 text-xs"
+              value={filterField}
+              onChange={(e) => setFilterField(e.target.value)}
+              className="h-8 w-44 text-xs"
+              aria-label="Filter field"
             >
-              <option value="">Column</option>
+              <option value="" disabled>
+                Select field
+              </option>
               {(tableSchema?.columns ?? []).map((c: ColumnInfo) => (
                 <option key={c.name} value={c.name}>
                   {c.name}
@@ -481,18 +510,16 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
               value={filterValue}
               onChange={(e) => setFilterValue(e.target.value)}
               className="h-8 w-48 text-xs"
-              onKeyDown={(e) => e.key === "Enter" && setPage(1)}
+              onKeyDown={(e) => e.key === "Enter" && applyFilter()}
             />
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setPage(1);
-                refresh();
-              }}
-            >
+            <Button variant="secondary" size="sm" onClick={applyFilter}>
               Apply
             </Button>
+            {appliedFilter ? (
+              <Button variant="ghost" size="sm" onClick={clearFilter}>
+                Clear
+              </Button>
+            ) : null}
           </div>
         )}
       </div>

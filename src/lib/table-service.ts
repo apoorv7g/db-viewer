@@ -114,14 +114,17 @@ export async function getTableData(
   let paramIndex = 1;
 
   if (options.filterColumn && options.filterValue !== undefined) {
-    if (!columnNames.includes(options.filterColumn)) {
-      throw new Error("Invalid filter column");
+    const filterText = options.filterValue.trim();
+    if (filterText) {
+      if (!columnNames.includes(options.filterColumn)) {
+        throw new Error("Invalid filter column");
+      }
+      conditions.push(
+        `${quoteIdent(options.filterColumn)}::text ILIKE $${paramIndex}`
+      );
+      params.push(`%${filterText}%`);
+      paramIndex++;
     }
-    conditions.push(
-      `${quoteIdent(options.filterColumn)}::text ILIKE $${paramIndex}`
-    );
-    params.push(`%${options.filterValue}%`);
-    paramIndex++;
   }
 
   const whereClause =
