@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   flexRender,
@@ -11,12 +11,17 @@ import {
 import {
   ArrowDown,
   ArrowUp,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
   Download,
+  Filter,
   Pencil,
   Plus,
   RefreshCw,
   Trash2,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import toast from "react-hot-toast";
 import { apiFetch } from "@/lib/api-client";
 import { downloadFile, exportToCsv, formatCellValue } from "@/lib/utils";
@@ -24,7 +29,6 @@ import type { ColumnInfo, PaginatedData, TableSchema } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { ConfirmationModal } from "@/components/confirmation-modal";
 import {
   Dialog,
@@ -62,8 +66,10 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
     payload: unknown;
     message: string;
   } | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
 
-  const schemaQuery = useQuery({
+  const schemaQuery = useQuery<{ schema: TableSchema }>({
     queryKey: ["schema", schema, tableName],
     queryFn: () =>
       apiFetch<{ schema: TableSchema }>(
@@ -71,7 +77,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
       ),
   });
 
-  const dataQuery = useQuery({
+  const dataQuery = useQuery<PaginatedData>({
     queryKey: [
       "data",
       schema,
@@ -102,20 +108,37 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
   });
 
   const tableSchema = schemaQuery.data?.schema;
-  const primaryKeys = tableSchema?.primaryKeys ?? [];
+  const primaryKeys: string[] = tableSchema?.primaryKeys ?? [];
+  const rows: Record<string, unknown>[] = dataQuery.data?.rows ?? [];
+  const allSelected =
+    rows.length > 0 &&
+    rows.every((row) =>
+      selectedRows.some((r) =>
+        primaryKeys.every((k) => r[k] === row[k])
+      )
+    );
+  const someSelected = selectedRows.length > 0 && !allSelected;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected]);
 
   const columns = useMemo<ColumnDef<Record<string, unknown>>[]>(() => {
-    const cols = dataQuery.data?.columns ?? [];
+    const cols: string[] = dataQuery.data?.columns ?? [];
     return [
       {
         id: "select",
         header: () => (
-          <input
-            type="checkbox"
+          <Checkbox
+            ref={selectAllRef}
+            checked={allSelected}
             onChange={(e) => {
-              if (e.target.checked) setSelectedRows(dataQuery.data?.rows ?? []);
+              if (e.target.checked) setSelectedRows(rows);
               else setSelectedRows([]);
             }}
+            aria-label="Select all rows"
           />
         ),
         cell: ({ row }) => {
@@ -123,8 +146,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
             primaryKeys.every((k) => r[k] === row.original[k])
           );
           return (
-            <input
-              type="checkbox"
+            <Checkbox
               checked={isSelected}
               onChange={(e) => {
                 if (e.target.checked)
@@ -136,10 +158,11 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
                     )
                   );
               }}
+              aria-label="Select row"
             />
           );
         },
-        size: 40,
+        size: 44,
       },
       ...cols.map((col) => ({
         id: col,
@@ -147,7 +170,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         header: () => (
           <button
             type="button"
-            className="flex items-center gap-1 font-medium hover:text-zinc-900"
+            className="flex items-center gap-1 font-medium text-foreground/80 hover:text-primary"
             onClick={() => {
               if (sortColumn === col) {
                 setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
@@ -159,12 +182,15 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
             }}
           >
             {col}
-            {sortColumn === col &&
-              (sortDirection === "asc" ? (
-                <ArrowUp className="h-3 w-3" />
+            {sortColumn === col ? (
+              sortDirection === "asc" ? (
+                <ArrowUp className="h-3 w-3 text-primary" />
               ) : (
-                <ArrowDown className="h-3 w-3" />
-              ))}
+                <ArrowDown className="h-3 w-3 text-primary" />
+              )
+            ) : (
+              <ArrowUpDown className="h-3 w-3 opacity-40" />
+            )}
           </button>
         ),
         cell: ({ getValue }: { getValue: () => unknown }) => {
@@ -172,7 +198,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
           const display = formatCellValue(v);
           return (
             <span
-              className={`block max-w-xs truncate font-mono text-xs ${v === null ? "text-zinc-400 italic" : ""}`}
+              className={`block max-w-[200px] truncate ${v === null ? "italic text-muted-foreground" : "text-foreground/90"}`}
               title={display}
             >
               {display}
@@ -199,7 +225,16 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
           ]
         : []),
     ];
-  }, [dataQuery.data, sortColumn, sortDirection, selectedRows, readOnly, primaryKeys]);
+  }, [
+    dataQuery.data,
+    sortColumn,
+    sortDirection,
+    selectedRows,
+    readOnly,
+    primaryKeys,
+    allSelected,
+    rows,
+  ]);
 
   const table = useReactTable({
     data: dataQuery.data?.rows ?? [],
@@ -219,7 +254,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
 
   const handleUpdate = async (values: Record<string, unknown>, confirmed = false) => {
     if (!editRow || primaryKeys.length === 0) {
-      toast.error("Table has no primary key  cannot update safely");
+      toast.error("Table has no primary key. Cannot update safely.");
       return;
     }
     const res = await apiFetch<{
@@ -281,7 +316,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
   const handleDelete = async (confirmed = false) => {
     if (selectedRows.length === 0) return;
     if (primaryKeys.length === 0) {
-      toast.error("Table has no primary key  cannot delete safely");
+      toast.error("Table has no primary key. Cannot delete safely.");
       return;
     }
     const whereList = selectedRows.map(buildWhere);
@@ -330,79 +365,151 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
   const totalPages = Math.ceil(total / pageSize);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex flex-wrap items-center gap-2 p-3 border-b border-zinc-200 dark:border-zinc-800">
-        <Badge variant="secondary">
-          {total.toLocaleString()} rows
-        </Badge>
-        <div className="flex-1" />
-        <Select
-          value={filterColumn}
-          onChange={(e) => setFilterColumn(e.target.value)}
-          className="w-32"
-        >
-          <option value="">Filter col</option>
-          {(tableSchema?.columns ?? []).map((c: ColumnInfo) => (
-            <option key={c.name} value={c.name}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
-        <Input
-          placeholder="Filter value"
-          value={filterValue}
-          onChange={(e) => setFilterValue(e.target.value)}
-          className="w-40"
-          onKeyDown={(e) => e.key === "Enter" && setPage(1)}
-        />
-        <Select
-          value={String(pageSize)}
-          onChange={(e) => {
-            setPageSize(Number(e.target.value));
-            setPage(1);
-          }}
-          className="w-24"
-        >
-          {PAGE_SIZES.map((s) => (
-            <option key={s} value={s}>
-              {s} / page
-            </option>
-          ))}
-        </Select>
-        <Button variant="outline" size="sm" onClick={() => refresh()}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-        <Button variant="outline" size="sm" onClick={exportCsv}>
-          <Download className="h-4 w-4" />
-        </Button>
-        {!readOnly && (
-          <>
+    <div className="flex h-full flex-col">
+      <div className="shrink-0 border-b border-border bg-card">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+          <button
+            type="button"
+            className="studio-toolbar-btn"
+            data-active={filtersOpen}
+            onClick={() => setFiltersOpen((o) => !o)}
+          >
+            <Filter className="h-3.5 w-3.5" />
+            Filters
+          </button>
+
+          {!readOnly && (
             <Button size="sm" onClick={() => setInsertOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Insert
+              <Plus className="h-3.5 w-3.5" />
+              Add record
             </Button>
+          )}
+
+          {!readOnly && selectedRows.length > 0 && (
             <Button
               variant="destructive"
               size="sm"
-              disabled={selectedRows.length === 0}
               onClick={() => handleDelete()}
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="h-3.5 w-3.5" />
               Delete ({selectedRows.length})
             </Button>
-          </>
+          )}
+
+          <div className="flex-1" />
+
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {total.toLocaleString()} records
+          </span>
+
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+              aria-label="Previous page"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Select
+              value={String(pageSize)}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="h-7 w-16 px-1 text-xs"
+            >
+              {PAGE_SIZES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </Select>
+            <span className="min-w-16 text-center text-xs tabular-nums text-muted-foreground">
+              {page} / {totalPages || 1}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+              aria-label="Next page"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => refresh()}
+            title="Refresh"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={exportCsv}
+            title="Export CSV"
+          >
+            <Download className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+
+        {filtersOpen && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
+            <Select
+              value={filterColumn}
+              onChange={(e) => setFilterColumn(e.target.value)}
+              className="h-8 w-40 text-xs"
+            >
+              <option value="">Column</option>
+              {(tableSchema?.columns ?? []).map((c: ColumnInfo) => (
+                <option key={c.name} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+            <Input
+              placeholder="Value"
+              value={filterValue}
+              onChange={(e) => setFilterValue(e.target.value)}
+              className="h-8 w-48 text-xs"
+              onKeyDown={(e) => e.key === "Enter" && setPage(1)}
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setPage(1);
+                refresh();
+              }}
+            >
+              Apply
+            </Button>
+          </div>
         )}
       </div>
 
-      <div className="flex-1 overflow-auto">
-        <table className="w-full text-sm border-collapse">
-          <thead className="sticky top-0 bg-zinc-50 dark:bg-zinc-900 z-10">
+      <div className="min-h-0 flex-1 overflow-auto">
+        <table className="studio-table">
+          <thead className="sticky top-0 z-10">
             {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id} className="border-b border-zinc-200 dark:border-zinc-800">
+              <tr key={hg.id}>
                 {hg.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="text-left px-3 py-2 font-medium whitespace-nowrap"
+                    className={
+                      header.id === "select"
+                        ? "w-11 whitespace-nowrap"
+                        : "whitespace-nowrap"
+                    }
                   >
                     {flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
@@ -413,13 +520,13 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
           <tbody>
             {dataQuery.isLoading ? (
               <tr>
-                <td colSpan={columns.length} className="p-8 text-center text-zinc-500">
+                <td colSpan={columns.length} className="p-12 text-center text-zinc-500">
                   Loading…
                 </td>
               </tr>
             ) : table.getRowModel().rows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="p-8 text-center text-zinc-500">
+                <td colSpan={columns.length} className="p-12 text-center text-zinc-500">
                   No rows
                 </td>
               </tr>
@@ -427,10 +534,13 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
               table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="border-b border-zinc-100 dark:border-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900/50"
+                  className="border-b border-border-subtle"
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-3 py-2">
+                    <td
+                      key={cell.id}
+                      className={cell.column.id === "select" ? "w-11" : undefined}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -439,30 +549,6 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
             )}
           </tbody>
         </table>
-      </div>
-
-      <div className="flex items-center justify-between p-3 border-t border-zinc-200 dark:border-zinc-800">
-        <span className="text-sm text-zinc-500">
-          Page {page} of {totalPages || 1}
-        </span>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
-          >
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next
-          </Button>
-        </div>
       </div>
 
       <Dialog open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>

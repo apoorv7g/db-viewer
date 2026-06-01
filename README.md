@@ -1,17 +1,18 @@
 # DB Viewer
 
-A lightweight, fast PostgreSQL administration tool similar to Drizzle Studio, built with Next.js. Connect with a standard URI, browse tables, edit data safely, and run SQL  without JDBC overhead or credential persistence.
+A lightweight, fast PostgreSQL administration tool similar to Drizzle Studio, built with Next.js. Connect with a standard URI, browse tables, edit data safely, and run SQL without JDBC overhead or credential persistence.
 
 ## Features
 
-- **PostgreSQL URI connection**  `postgresql://user:pass@host:port/database`
-- **In-memory sessions**  credentials are never written to disk
-- **Connection pooling**  bounded pools per session (max 5 connections)
-- **Table browser**  search, pagination (10/50/100/500), sort, filter
-- **CRUD with confirmations**  insert, update, delete require explicit approval
-- **Read-only mode**  safe access for production databases
-- **SQL console**  Monaco editor, query history, execution time, CSV/JSON export
-- **Safety checks**  destructive SQL detection, query timeouts, result limits
+- **PostgreSQL URI connection:** `postgresql://user:pass@host:port/database`
+- **In-memory sessions:** credentials are never written to disk
+- **Connection pooling:** bounded pools per session (max 5 connections)
+- **Table browser:** search, pagination (10/50/100/500), sort, filter
+- **CRUD with confirmations:** insert, update, delete require explicit approval
+- **Read-only mode:** safe access for production databases
+- **SQL console:** Monaco editor, query history, execution time, CSV/JSON export
+- **Light and dark themes:** toggle in the header
+- **Safety checks:** destructive SQL detection, query timeouts, result limits
 
 ## Quick Start
 
@@ -33,7 +34,7 @@ postgresql://postgres:password@localhost:5432/mydb
 You can pre-fill a URI in the UI from an env var in development:
 
 ```env
-# .env.local (not committed  for your convenience only)
+# .env.local (not committed, for your convenience only)
 NEXT_PUBLIC_DEFAULT_DB_URI=postgresql://...
 ```
 

@@ -19,6 +19,23 @@ export const metadata: Metadata = {
     "Lightweight PostgreSQL database administration tool built with Next.js",
 };
 
+const themeInitScript = `
+(function () {
+  try {
+    var t = localStorage.getItem("db-viewer-theme");
+    if (t === "light" || t === "dark") {
+      document.documentElement.classList.add(t);
+    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.add("light");
+    }
+  } catch (e) {
+    document.documentElement.classList.add("dark");
+  }
+})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -27,9 +44,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="min-h-full flex flex-col font-sans bg-background text-foreground">
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -2,14 +2,21 @@
 
 import { useState } from "react";
 import { ConnectionForm } from "@/components/database/connection-form";
-import { ConnectionStatus } from "@/components/database/connection-status";
-import { TableList } from "@/components/tables/table-list";
 import { DataGrid } from "@/components/tables/data-grid";
 import { SchemaViewer } from "@/components/tables/schema-viewer";
 import { SqlConsole } from "@/components/sql-console/sql-editor";
+import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { SidebarNav } from "@/components/layout/sidebar-nav";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { useConnection } from "@/hooks/use-connection";
-import { Database, Terminal, Table2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import {
+  Database,
+  Loader2,
+  Table2,
+  Columns3,
+  Rows3,
+  Terminal,
+} from "lucide-react";
 
 type Tab = "data" | "schema" | "sql";
 
@@ -20,23 +27,36 @@ export default function DashboardPage() {
     name: string;
   } | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("data");
+  const [sqlOnly, setSqlOnly] = useState(false);
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-zinc-500">Loading…</p>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Connecting</p>
       </div>
     );
   }
 
   if (!connected) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-zinc-50 dark:bg-zinc-950">
-        <div className="mb-8 text-center">
-          <Database className="h-12 w-12 mx-auto mb-4 text-zinc-400" />
-          <h1 className="text-2xl font-bold">DB Viewer</h1>
-          <p className="text-zinc-500 mt-2">
-            Lightweight PostgreSQL administration  fast, safe, and simple.
+      <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden p-6 sm:p-8">
+        <div className="absolute right-4 top-4">
+          <ThemeToggle />
+        </div>
+        <div className="pointer-events-none absolute inset-0" aria-hidden>
+          <div className="absolute -top-40 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-primary opacity-[0.06] blur-3xl" />
+        </div>
+        <div className="relative mb-10 max-w-md text-center">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-muted ring-1 ring-primary/20">
+            <Database className="h-7 w-7 text-primary" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            DB Viewer
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+            Browse tables, edit rows, and run SQL. Session-only connections with
+            no credentials stored on disk.
           </p>
         </div>
         <ConnectionForm />
@@ -44,94 +64,97 @@ export default function DashboardPage() {
     );
   }
 
+  const sqlActive = sqlOnly && !selectedTable;
+  const tableLabel = selectedTable
+    ? `${selectedTable.schema}.${selectedTable.name}`
+    : null;
+
   return (
-    <div className="flex flex-col h-screen">
-      <header className="flex items-center gap-2 px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
-        <Database className="h-5 w-5" />
-        <h1 className="font-semibold">DB Viewer</h1>
-      </header>
-      <ConnectionStatus />
-      <div className="flex flex-1 min-h-0">
-        <aside className="w-64 shrink-0 border-r border-zinc-200 dark:border-zinc-800 flex flex-col">
-          <div className="px-3 py-2 text-xs font-medium text-zinc-500 uppercase tracking-wide">
-            Tables
+    <DashboardShell
+      sidebar={
+        <SidebarNav
+          selected={selectedTable}
+          onSelectTable={(t) => {
+            setSelectedTable(t);
+            setSqlOnly(false);
+            setActiveTab("data");
+          }}
+          sqlActive={sqlActive}
+          onOpenSql={() => {
+            setSqlOnly(true);
+            setSelectedTable(null);
+            setActiveTab("sql");
+          }}
+        />
+      }
+    >
+      {selectedTable ? (
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-card px-3 py-2 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 items-center gap-2">
+              <Table2 className="h-4 w-4 shrink-0 text-primary" />
+              <span className="truncate text-sm font-medium">{tableLabel}</span>
+            </div>
+            <nav className="flex gap-0.5 overflow-x-auto sm:ml-auto">
+              {(
+                [
+                  { id: "data" as const, label: "Data", icon: Rows3 },
+                  { id: "schema" as const, label: "Schema", icon: Columns3 },
+                  { id: "sql" as const, label: "SQL", icon: Terminal },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    setSqlOnly(tab.id === "sql");
+                  }}
+                  data-active={activeTab === tab.id}
+                  className="studio-tab shrink-0"
+                >
+                  <tab.icon className="h-3.5 w-3.5" />
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
           </div>
-          <TableList
-            selected={selectedTable}
-            onSelect={(t) => {
-              setSelectedTable(t);
-              setActiveTab("data");
-            }}
-          />
-        </aside>
-        <main className="flex-1 flex flex-col min-w-0">
-          {selectedTable ? (
-            <>
-              <div className="flex items-center gap-1 px-4 py-2 border-b border-zinc-200 dark:border-zinc-800">
-                <Table2 className="h-4 w-4 text-zinc-400" />
-                <span className="font-medium">
-                  {selectedTable.schema}.{selectedTable.name}
-                </span>
-                <div className="flex-1" />
-                <nav className="flex gap-1">
-                  {(
-                    [
-                      { id: "data" as const, label: "Data" },
-                      { id: "schema" as const, label: "Schema" },
-                      { id: "sql" as const, label: "SQL" },
-                    ] as const
-                  ).map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setActiveTab(tab.id)}
-                      className={cn(
-                        "px-3 py-1 text-sm rounded-md",
-                        activeTab === tab.id
-                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                          : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                      )}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </nav>
+          <div className="min-h-0 flex-1">
+            {activeTab === "data" && (
+              <DataGrid
+                tableName={selectedTable.name}
+                schema={selectedTable.schema}
+              />
+            )}
+            {activeTab === "schema" && (
+              <div className="h-full overflow-auto p-4">
+                <SchemaViewer
+                  tableName={selectedTable.name}
+                  schema={selectedTable.schema}
+                />
               </div>
-              <div className="flex-1 min-h-0">
-                {activeTab === "data" && (
-                  <DataGrid
-                    tableName={selectedTable.name}
-                    schema={selectedTable.schema}
-                  />
-                )}
-                {activeTab === "schema" && (
-                  <div className="p-4 overflow-auto h-full">
-                    <SchemaViewer
-                      tableName={selectedTable.name}
-                      schema={selectedTable.schema}
-                    />
-                  </div>
-                )}
-                {activeTab === "sql" && (
-                  <div className="h-full min-h-0">
-                    <SqlConsole />
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="flex-1 flex flex-col min-h-0">
-              <div className="flex items-center gap-2 px-4 py-2 border-b border-zinc-200 dark:border-zinc-800">
-                <Terminal className="h-4 w-4" />
-                <span className="font-medium">SQL Console</span>
-              </div>
-              <div className="flex-1 min-h-0">
+            )}
+            {activeTab === "sql" && (
+              <div className="h-full min-h-0">
                 <SqlConsole />
               </div>
-            </div>
-          )}
-        </main>
-      </div>
-    </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-4 py-2.5">
+            <Terminal className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium">SQL runner</span>
+            <span className="hidden text-xs text-muted-foreground sm:inline">
+              Run queries against your database
+            </span>
+          </div>
+          <div className="min-h-0 flex-1">
+            <SqlConsole />
+          </div>
+        </div>
+      )}
+    </DashboardShell>
   );
 }

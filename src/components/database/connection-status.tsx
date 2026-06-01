@@ -3,19 +3,55 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useConnection } from "@/hooks/use-connection";
-import { Database, LogOut, Shield } from "lucide-react";
+import { LogOut, Shield, Circle } from "lucide-react";
 
-export function ConnectionStatus() {
+interface ConnectionStatusProps {
+  compact?: boolean;
+}
+
+export function ConnectionStatus({ compact }: ConnectionStatusProps) {
   const { session, disconnect, connected } = useConnection();
 
   if (!connected || !session) return null;
 
+  if (compact) {
+    return (
+      <div className="flex min-w-0 items-center gap-2 text-xs sm:text-sm">
+        <Circle className="h-2 w-2 shrink-0 fill-primary text-primary" />
+        <span className="truncate text-muted-foreground">
+          <span className="font-medium text-foreground">{session.database}</span>
+          <span className="mx-1 opacity-50">@</span>
+          {session.host}
+        </span>
+        {session.readOnly && (
+          <Badge variant="warning" className="hidden shrink-0 gap-1 sm:inline-flex">
+            <Shield className="h-3 w-3" />
+            Read-only
+          </Badge>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 shrink-0 px-2 text-muted-foreground"
+          onClick={() => disconnect()}
+        >
+          <LogOut className="h-3.5 w-3.5" />
+          <span className="hidden md:inline">Disconnect</span>
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center gap-3 px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
-      <Database className="h-4 w-4 text-emerald-600" />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">
-          {session.database}@{session.host}
+    <div className="flex flex-wrap items-center gap-3 border-b border-border bg-sidebar px-4 py-2">
+      <Circle className="h-2 w-2 fill-primary text-primary" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">
+          {session.database}
+          <span className="font-normal text-muted-foreground">
+            {" "}
+            @ {session.host}
+          </span>
         </p>
       </div>
       {session.readOnly && (
