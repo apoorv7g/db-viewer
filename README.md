@@ -1,36 +1,101 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DB Viewer
 
-## Getting Started
+A lightweight, fast PostgreSQL administration tool similar to Drizzle Studio, built with Next.js. Connect with a standard URI, browse tables, edit data safely, and run SQL  without JDBC overhead or credential persistence.
 
-First, run the development server:
+## Features
+
+- **PostgreSQL URI connection**  `postgresql://user:pass@host:port/database`
+- **In-memory sessions**  credentials are never written to disk
+- **Connection pooling**  bounded pools per session (max 5 connections)
+- **Table browser**  search, pagination (10/50/100/500), sort, filter
+- **CRUD with confirmations**  insert, update, delete require explicit approval
+- **Read-only mode**  safe access for production databases
+- **SQL console**  Monaco editor, query history, execution time, CSV/JSON export
+- **Safety checks**  destructive SQL detection, query timeouts, result limits
+
+## Quick Start
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) and enter your PostgreSQL connection URI.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Example URI
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+postgresql://postgres:password@localhost:5432/mydb
+```
 
-## Learn More
+### Environment (optional)
 
-To learn more about Next.js, take a look at the following resources:
+You can pre-fill a URI in the UI from an env var in development:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```env
+# .env.local (not committed  for your convenience only)
+NEXT_PUBLIC_DEFAULT_DB_URI=postgresql://...
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+> **Security:** Connection strings are held in server memory for the session only. Disconnect or close the browser tab to end the session (session ID is stored in `sessionStorage`).
 
-## Deploy on Vercel
+## Tech Stack
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Next.js 16 (App Router)
+- TypeScript, Tailwind CSS
+- `pg` (node-postgres) with connection pooling
+- TanStack Query & Table
+- Monaco Editor, React Hook Form, Zod
+- shadcn-style UI components
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## API Routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/connect` | Connect and create pool |
+| GET | `/api/connect` | Connection status |
+| DELETE | `/api/connect` | Disconnect |
+| GET | `/api/tables` | List tables |
+| GET | `/api/tables/:name/schema` | Table schema |
+| GET/POST/PUT/DELETE | `/api/tables/:name/data` | Paginated CRUD |
+| POST | `/api/query` | Execute SQL |
+
+All authenticated requests send header: `X-Connection-Id: <session-id>`.
+
+## Safety
+
+- Query timeout (default 30s, configurable)
+- Result limit (default 1000, max 10000)
+- Read-only mode blocks writes
+- Destructive SQL requires confirmation
+- CRUD operations use parameterized queries
+- Tables without primary keys cannot be updated/deleted via UI
+
+## Project Structure
+
+```
+src/
+├── app/
+│   ├── api/          # connect, tables, query
+│   └── dashboard/    # main UI
+├── components/
+│   ├── database/     # connection form
+│   ├── tables/       # list, grid, schema
+│   ├── sql-console/  # Monaco SQL editor
+│   └── forms/        # row editor, JSON editor
+├── lib/              # database, validation, sql-safety
+└── types/
+```
+
+## Scripts
+
+```bash
+npm run dev      # development server
+npm run build    # production build
+npm run start    # production server
+npm run lint     # ESLint
+```
+
+## License
+
+MIT
