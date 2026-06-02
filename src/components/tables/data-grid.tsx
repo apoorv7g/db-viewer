@@ -53,6 +53,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
   const readOnly = session?.readOnly ?? false;
 
   const [page, setPage] = useState(1);
+  const [pageInput, setPageInput] = useState("1");
   const [pageSize, setPageSize] = useState<number>(50);
   const [sortColumn, setSortColumn] = useState<string | undefined>();
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -366,7 +367,22 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
   };
 
   const total = dataQuery.data?.total ?? 0;
-  const totalPages = Math.ceil(total / pageSize);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  useEffect(() => {
+    setPageInput(String(page));
+  }, [page]);
+
+  const jumpToPage = () => {
+    const parsed = Number.parseInt(pageInput, 10);
+    if (Number.isNaN(parsed)) {
+      setPageInput(String(page));
+      return;
+    }
+    const nextPage = Math.min(Math.max(1, parsed), totalPages);
+    setPage(nextPage);
+    setPageInput(String(nextPage));
+  };
 
   const applyFilter = () => {
     const value = filterValue.trim();
@@ -453,8 +469,19 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
                 </option>
               ))}
             </Select>
-            <span className="min-w-16 text-center text-xs tabular-nums text-muted-foreground">
-              {page} / {totalPages || 1}
+            <Input
+              type="number"
+              min={1}
+              max={totalPages}
+              value={pageInput}
+              onChange={(e) => setPageInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && jumpToPage()}
+              onBlur={jumpToPage}
+              className="h-7 w-12 px-1 text-center text-xs tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              aria-label="Page number"
+            />
+            <span className="text-xs tabular-nums text-muted-foreground">
+              / {totalPages}
             </span>
             <Button
               variant="ghost"
