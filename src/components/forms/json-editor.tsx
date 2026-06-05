@@ -35,7 +35,7 @@ export function JsonEditor({ value, onChange, disabled }: JsonEditorProps) {
         className="font-mono text-xs min-h-[100px]"
         placeholder="{}"
       />
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }

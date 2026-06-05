@@ -42,6 +42,23 @@ import { useConnection } from "@/hooks/use-connection";
 
 const PAGE_SIZES = [10, 50, 100, 500] as const;
 
+function sameRow(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+  columns: string[]
+) {
+  return columns.every((col) => a[col] === b[col]);
+}
+
+function cellEditValue(value: unknown, column?: ColumnInfo): string {
+  if (value === null || value === undefined) return "";
+  const udt = column?.udtName.toLowerCase();
+  if (udt === "json" || udt === "jsonb") {
+    return typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
+  }
+  return formatCellValue(value) === "NULL" ? "" : formatCellValue(value);
+}
+
 interface DataGridProps {
   tableName: string;
   schema: string;
@@ -65,6 +82,11 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
   } | null>(null);
   const [selectedRows, setSelectedRows] = useState<Record<string, unknown>[]>([]);
   const [editRow, setEditRow] = useState<Record<string, unknown> | null>(null);
+  const [editingCell, setEditingCell] = useState<{
+    row: Record<string, unknown>;
+    columnId: string;
+    value: string;
+  } | null>(null);
   const [insertOpen, setInsertOpen] = useState(false);
   const [confirm, setConfirm] = useState<{
     type: "update" | "delete" | "insert";
@@ -73,6 +95,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
   } | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
+  const committingCellRef = useRef(false);
 
   const schemaQuery = useQuery<{ schema: TableSchema }>({
     queryKey: ["schema", schema, tableName],
@@ -129,6 +152,120 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
       selectAllRef.current.indeterminate = someSelected;
     }
   }, [someSelected]);
+
+  const getColumnMeta = useCallback(
+    (columnId: string) => tableSchema?.columns.find((c: ColumnInfo) => c.name === columnId),
+    [tableSchema]
+  );
+
+  const parseValueForColumn = useCallback(
+    (columnId: string, raw: string): unknown => {
+      const col = getColumnMeta(columnId);
+      if (!col) return raw;
+
+      const trimmed = raw.trim();
+      if (trimmed === "") {
+        return col.isNullable ? null : "";
+      }
+
+      const udt = col.udtName.toLowerCase();
+      if (["int2", "int4", "int8", "float4", "float8", "numeric"].includes(udt)) {
+        const n = Number(trimmed);
+        return Number.isNaN(n) ? raw : n;
+      }
+      if (udt === "bool") {
+        if (trimmed === "true") return true;
+        if (trimmed === "false") return false;
+        return raw;
+      }
+      if (udt === "json" || udt === "jsonb") {
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return raw;
+        }
+      }
+      return raw;
+    },
+    [getColumnMeta]
+  );
+
+  const buildWhere = useCallback(
+    (row: Record<string, unknown>) => {
+      const where: Record<string, unknown> = {};
+      if (primaryKeys.length > 0) {
+        for (const pk of primaryKeys) where[pk] = row[pk];
+      } else if (tableSchema) {
+        for (const col of tableSchema.columns) {
+          if (row[col.name] !== undefined) {
+            where[col.name] = row[col.name];
+          }
+        }
+      }
+      return where;
+    },
+    [primaryKeys, tableSchema]
+  );
+
+  const refresh = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["data", schema, tableName] });
+  }, [queryClient, schema, tableName]);
+
+  const handleUpdate = useCallback(
+    async (
+      values: Record<string, unknown>,
+      confirmed = false,
+      targetRow?: Record<string, unknown>
+    ) => {
+      const row = targetRow ?? editRow;
+      if (!row) {
+        toast.error("No row selected for update.");
+        return;
+      }
+      const res = await apiFetch<{
+        requiresConfirmation?: boolean;
+        updated?: number;
+        message?: string;
+        preview?: unknown;
+      }>(`/api/tables/${encodeURIComponent(tableName)}/data`, {
+        method: "PUT",
+        body: JSON.stringify({
+          data: values,
+          where: buildWhere(row),
+          schema,
+          confirmed,
+        }),
+      });
+      if (res.requiresConfirmation) {
+        setEditRow(row);
+        setConfirm({
+          type: "update",
+          payload: { values },
+          message: res.message ?? "Confirm update?",
+        });
+        return;
+      }
+      toast.success(`Updated ${res.updated} row(s)`);
+      setEditRow(null);
+      refresh();
+    },
+    [editRow, tableName, buildWhere, schema, refresh]
+  );
+
+  const commitCellEdit = useCallback(
+    async (row: Record<string, unknown>, columnId: string, rawValue: string) => {
+      if (committingCellRef.current) return;
+      committingCellRef.current = true;
+      try {
+        const parsed = parseValueForColumn(columnId, rawValue);
+        await handleUpdate({ [columnId]: parsed }, false, row);
+      } finally {
+        committingCellRef.current = false;
+        setEditingCell(null);
+      }
+    },
+    [handleUpdate, parseValueForColumn]
+  );
 
   const columns = useMemo<ColumnDef<Record<string, unknown>>[]>(() => {
     const cols: string[] = dataQuery.data?.columns ?? [];
@@ -198,16 +335,70 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
             )}
           </button>
         ),
-        cell: ({ getValue }: { getValue: () => unknown }) => {
+        cell: ({ row, getValue }: { row: { original: Record<string, unknown> }; getValue: () => unknown }) => {
           const v = getValue();
           const display = formatCellValue(v);
+          const isPk = primaryKeys.includes(col);
+          const columnMeta = getColumnMeta(col);
+          const isEditing =
+            editingCell !== null &&
+            editingCell.columnId === col &&
+            sameRow(editingCell.row, row.original, cols);
+
+          if (isEditing && !readOnly && !isPk) {
+            return (
+              <Input
+                autoFocus
+                value={editingCell.value}
+                onChange={(e) =>
+                  setEditingCell((current) =>
+                    current ? { ...current, value: e.target.value } : current
+                  )
+                }
+                onBlur={() => {
+                  void commitCellEdit(row.original, col, editingCell.value);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void commitCellEdit(row.original, col, editingCell.value);
+                  } else if (e.key === "Escape") {
+                    setEditingCell(null);
+                  }
+                }}
+                className="h-7 min-w-[120px] px-1 text-xs"
+              />
+            );
+          }
+
           return (
-            <span
-              className={`block max-w-[200px] truncate ${v === null ? "italic text-muted-foreground" : "text-foreground/90"}`}
+            <div
+              role="button"
+              tabIndex={readOnly || isPk ? -1 : 0}
+              className={`block w-full max-w-[200px] truncate text-left ${readOnly || isPk ? "cursor-default" : "cursor-text"} ${v === null ? "italic text-muted-foreground" : "text-foreground/90"}`}
               title={display}
+              onDoubleClick={() => {
+                if (readOnly || isPk) return;
+                setEditingCell({
+                  row: row.original,
+                  columnId: col,
+                  value: cellEditValue(v, columnMeta),
+                });
+              }}
+              onKeyDown={(e) => {
+                if (readOnly || isPk) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setEditingCell({
+                    row: row.original,
+                    columnId: col,
+                    value: cellEditValue(v, columnMeta),
+                  });
+                }
+              }}
             >
               {display}
-            </span>
+            </div>
           );
         },
       })),
@@ -239,6 +430,9 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
     primaryKeys,
     allSelected,
     rows,
+    editingCell,
+    getColumnMeta,
+    commitCellEdit,
   ]);
 
   const table = useReactTable({
@@ -246,48 +440,6 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
-
-  const refresh = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["data", schema, tableName] });
-  }, [queryClient, schema, tableName]);
-
-  const buildWhere = (row: Record<string, unknown>) => {
-    const where: Record<string, unknown> = {};
-    for (const pk of primaryKeys) where[pk] = row[pk];
-    return where;
-  };
-
-  const handleUpdate = async (values: Record<string, unknown>, confirmed = false) => {
-    if (!editRow || primaryKeys.length === 0) {
-      toast.error("Table has no primary key. Cannot update safely.");
-      return;
-    }
-    const res = await apiFetch<{
-      requiresConfirmation?: boolean;
-      updated?: number;
-      message?: string;
-      preview?: unknown;
-    }>(`/api/tables/${encodeURIComponent(tableName)}/data`, {
-      method: "PUT",
-      body: JSON.stringify({
-        data: values,
-        where: buildWhere(editRow),
-        schema,
-        confirmed,
-      }),
-    });
-    if (res.requiresConfirmation) {
-      setConfirm({
-        type: "update",
-        payload: { values },
-        message: res.message ?? "Confirm update?",
-      });
-      return;
-    }
-    toast.success(`Updated ${res.updated} row(s)`);
-    setEditRow(null);
-    refresh();
-  };
 
   const handleInsert = async (
     values: Record<string, unknown>,

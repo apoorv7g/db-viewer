@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { JsonEditor } from "./json-editor";
@@ -87,13 +88,13 @@ export function RowForm({
             <div className="flex items-center justify-between">
               <Label>
                 {col.name}
-                <span className="ml-2 text-xs text-zinc-400 font-normal">
+                <span className="ml-2 text-xs text-muted-foreground font-normal">
                   {col.udtName}
                   {col.isNullable ? "" : " · required"}
                 </span>
               </Label>
               {col.isNullable && (
-                <label className="flex items-center gap-1 text-xs text-zinc-500">
+                <label className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Checkbox {...register(`${col.name}__null`)} disabled={disabled} />
                   NULL
                 </label>
@@ -110,14 +111,10 @@ export function RowForm({
                 disabled={disabled}
               />
             ) : col.udtName === "bool" ? (
-              <select
-                className="flex h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-                {...register(col.name)}
-                disabled={disabled}
-              >
+              <Select {...register(col.name)} disabled={disabled}>
                 <option value="true">true</option>
                 <option value="false">false</option>
-              </select>
+              </Select>
             ) : ["text", "varchar"].includes(col.dataType) &&
               (col.characterMaximumLength ?? 0) > 200 ? (
               <Textarea {...register(col.name)} disabled={disabled} />

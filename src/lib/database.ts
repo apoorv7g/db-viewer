@@ -117,7 +117,21 @@ export async function testConnection(uri: string): Promise<{ ok: boolean; error?
 export async function disconnect(connectionId: string): Promise<boolean> {
   const entry = pools.get(connectionId);
   if (!entry) return false;
-  await entry.pool.end();
+
+  // Guard against double-ending the same pool, which pg does not allow.
+  if ((entry.pool as any).ended) {
+    pools.delete(connectionId);
+    return false;
+  }
+
+  try {
+    await entry.pool.end();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    if (!message.includes("Called end on pool more than once")) {
+      throw err;
+    }
+  }
   pools.delete(connectionId);
   return true;
 }
