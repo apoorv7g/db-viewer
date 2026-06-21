@@ -20,7 +20,7 @@ export function TableList({ selected, onSelect }: TableListProps) {
     queryKey: ["tables", search],
     queryFn: () =>
       apiFetch<{ tables: TableInfo[] }>(
-        `/api/tables${search ? `?search=${encodeURIComponent(search)}` : ""}`
+        `api/tables${search ? `?search=${encodeURIComponent(search)}` : ""}`
       ),
   });
 

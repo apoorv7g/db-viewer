@@ -101,7 +101,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
     queryKey: ["schema", schema, tableName],
     queryFn: () =>
       apiFetch<{ schema: TableSchema }>(
-        `/api/tables/${encodeURIComponent(tableName)}/schema?schema=${encodeURIComponent(schema)}`
+        `api/tables/${encodeURIComponent(tableName)}/schema?schema=${encodeURIComponent(schema)}`
       ),
   });
 
@@ -130,7 +130,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         params.set("filterValue", appliedFilter.value);
       }
       return apiFetch<PaginatedData>(
-        `/api/tables/${encodeURIComponent(tableName)}/data?${params}`
+        `api/tables/${encodeURIComponent(tableName)}/data?${params}`
       );
     },
   });
@@ -227,7 +227,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         updated?: number;
         message?: string;
         preview?: unknown;
-      }>(`/api/tables/${encodeURIComponent(tableName)}/data`, {
+      }>(`api/tables/${encodeURIComponent(tableName)}/data`, {
         method: "PUT",
         body: JSON.stringify({
           data: values,
@@ -449,7 +449,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
       requiresConfirmation?: boolean;
       inserted?: number;
       message?: string;
-    }>(`/api/tables/${encodeURIComponent(tableName)}/data`, {
+    }>(`api/tables/${encodeURIComponent(tableName)}/data`, {
       method: "POST",
       body: JSON.stringify({
         rows: [values],
@@ -481,7 +481,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
       requiresConfirmation?: boolean;
       deleted?: number;
       message?: string;
-    }>(`/api/tables/${encodeURIComponent(tableName)}/data`, {
+    }>(`api/tables/${encodeURIComponent(tableName)}/data`, {
       method: "DELETE",
       body: JSON.stringify({ where: whereList, schema, confirmed }),
     });

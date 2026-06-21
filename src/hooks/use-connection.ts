@@ -12,7 +12,7 @@ export function useConnection() {
     queryKey: ["connection"],
     queryFn: () =>
       apiFetch<{ connected: boolean; session?: ConnectionSession }>(
-        "/api/connect"
+        "api/connect"
       ),
     retry: false,
   });
@@ -24,7 +24,7 @@ export function useConnection() {
       queryTimeoutMs?: number;
       resultLimit?: number;
     }) =>
-      apiFetch<{ session: ConnectionSession }>("/api/connect", {
+      apiFetch<{ session: ConnectionSession }>("api/connect", {
         method: "POST",
         body: JSON.stringify(input),
       }),
@@ -41,7 +41,7 @@ export function useConnection() {
 
   const disconnectMutation = useMutation({
     mutationFn: () =>
-      apiFetch("/api/connect", { method: "DELETE" }),
+      apiFetch("api/connect", { method: "DELETE" }),
     onSuccess: () => {
       setStoredConnectionId(null);
       queryClient.setQueryData(["connection"], { connected: false });

@@ -75,7 +75,7 @@ export function SqlConsole() {
   const runQuery = async (querySql: string, confirmed = false) => {
     setLoading(true);
     try {
-      const res = await apiFetch<QueryResponse>("/api/query", {
+      const res = await apiFetch<QueryResponse>("api/query", {
         method: "POST",
         body: JSON.stringify({ sql: querySql, limit, confirmed }),
       });

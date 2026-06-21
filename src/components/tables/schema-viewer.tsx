@@ -25,7 +25,7 @@ export function SchemaViewer({ tableName, schema }: SchemaViewerProps) {
     queryKey: ["schema", schema, tableName],
     queryFn: () =>
       apiFetch<{ schema: TableSchema; softDeleteColumn: string | null }>(
-        `/api/tables/${encodeURIComponent(tableName)}/schema?schema=${encodeURIComponent(schema)}`
+        `api/tables/${encodeURIComponent(tableName)}/schema?schema=${encodeURIComponent(schema)}`
       ),
   });
 
