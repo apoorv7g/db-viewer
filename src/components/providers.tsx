@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
 import { useState } from "react";
+import { ConnectionLifecycle } from "@/components/database/connection-lifecycle";
 import { ThemeProvider } from "@/components/theme-provider";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -18,6 +19,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
+        <ConnectionLifecycle />
         {children}
         <Toaster
           position="bottom-right"

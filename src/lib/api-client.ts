@@ -11,6 +11,24 @@ export function setStoredConnectionId(id: string | null) {
   else sessionStorage.removeItem(CONNECTION_KEY);
 }
 
+/** Best-effort disconnect when the tab/window is closing (uses fetch keepalive). */
+export function disconnectSessionOnUnload(): void {
+  if (typeof window === "undefined") return;
+  const connectionId = getStoredConnectionId();
+  if (!connectionId) return;
+
+  sessionStorage.removeItem(CONNECTION_KEY);
+
+  void fetch("api/connect", {
+    method: "DELETE",
+    headers: {
+      "X-Connection-Id": connectionId,
+      "Content-Type": "application/json",
+    },
+    keepalive: true,
+  });
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
