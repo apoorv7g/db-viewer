@@ -20,6 +20,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  X,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import toast from "react-hot-toast";
@@ -42,13 +43,19 @@ import { useConnection } from "@/hooks/use-connection";
 
 const PAGE_SIZES = [10, 50, 100, 500] as const;
 
-function sameRow(
-  a: Record<string, unknown>,
-  b: Record<string, unknown>,
+function getRowKey(
+  row: Record<string, unknown>,
+  primaryKeys: string[],
   columns: string[]
 ) {
-  return columns.every((col) => a[col] === b[col]);
+  const keys = primaryKeys.length > 0 ? primaryKeys : columns;
+  return keys.map((k) => String(row[k] ?? "")).join("\0");
 }
+
+type PendingRowEdit = {
+  row: Record<string, unknown>;
+  changes: Record<string, string>;
+};
 
 function cellEditValue(value: unknown, column?: ColumnInfo): string {
   if (value === null || value === undefined) return "";
@@ -82,20 +89,29 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
   } | null>(null);
   const [selectedRows, setSelectedRows] = useState<Record<string, unknown>[]>([]);
   const [editRow, setEditRow] = useState<Record<string, unknown> | null>(null);
-  const [editingCell, setEditingCell] = useState<{
-    row: Record<string, unknown>;
+  const [pendingEdits, setPendingEdits] = useState<Record<string, PendingRowEdit>>({});
+  const [activeCell, setActiveCell] = useState<{
+    rowKey: string;
     columnId: string;
-    value: string;
   } | null>(null);
+  const [savingEdits, setSavingEdits] = useState(false);
   const [insertOpen, setInsertOpen] = useState(false);
   const [confirm, setConfirm] = useState<{
-    type: "update" | "delete" | "insert";
+    type: "update" | "batch-update" | "delete" | "insert";
     payload: unknown;
     message: string;
   } | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
-  const committingCellRef = useRef(false);
+
+  const pendingChangeCount = useMemo(
+    () =>
+      Object.values(pendingEdits).reduce(
+        (count, edit) => count + Object.keys(edit.changes).length,
+        0
+      ),
+    [pendingEdits]
+  );
 
   const schemaQuery = useQuery<{ schema: TableSchema }>({
     queryKey: ["schema", schema, tableName],
@@ -215,7 +231,8 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
     async (
       values: Record<string, unknown>,
       confirmed = false,
-      targetRow?: Record<string, unknown>
+      targetRow?: Record<string, unknown>,
+      fromRowDialog = false
     ) => {
       const row = targetRow ?? editRow;
       if (!row) {
@@ -237,10 +254,10 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         }),
       });
       if (res.requiresConfirmation) {
-        setEditRow(row);
+        if (fromRowDialog) setEditRow(row);
         setConfirm({
           type: "update",
-          payload: { values },
+          payload: { values, targetRow: row },
           message: res.message ?? "Confirm update?",
         });
         return;
@@ -252,19 +269,132 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
     [editRow, tableName, buildWhere, schema, refresh]
   );
 
-  const commitCellEdit = useCallback(
-    async (row: Record<string, unknown>, columnId: string, rawValue: string) => {
-      if (committingCellRef.current) return;
-      committingCellRef.current = true;
+  const updatePendingCell = useCallback(
+    (
+      row: Record<string, unknown>,
+      columnId: string,
+      rawValue: string,
+      cols: string[]
+    ) => {
+      const rowKey = getRowKey(row, primaryKeys, cols);
+      const original = cellEditValue(row[columnId], getColumnMeta(columnId));
+
+      setPendingEdits((prev) => {
+        const next = { ...prev };
+        const existing = next[rowKey] ?? { row, changes: {} };
+
+        if (rawValue === original) {
+          const { [columnId]: _removed, ...rest } = existing.changes;
+          if (Object.keys(rest).length === 0) {
+            delete next[rowKey];
+          } else {
+            next[rowKey] = { row, changes: rest };
+          }
+        } else {
+          next[rowKey] = {
+            row,
+            changes: { ...existing.changes, [columnId]: rawValue },
+          };
+        }
+        return next;
+      });
+    },
+    [getColumnMeta, primaryKeys]
+  );
+
+  const revertPendingCell = useCallback(
+    (row: Record<string, unknown>, columnId: string, cols: string[]) => {
+      const rowKey = getRowKey(row, primaryKeys, cols);
+      setPendingEdits((prev) => {
+        const existing = prev[rowKey];
+        if (!existing) return prev;
+
+        const next = { ...prev };
+        const { [columnId]: _removed, ...rest } = existing.changes;
+        if (Object.keys(rest).length === 0) {
+          delete next[rowKey];
+        } else {
+          next[rowKey] = { ...existing, changes: rest };
+        }
+        return next;
+      });
+      setActiveCell(null);
+    },
+    [primaryKeys]
+  );
+
+  const cancelAllPendingEdits = useCallback(() => {
+    setPendingEdits({});
+    setActiveCell(null);
+  }, []);
+
+  const savePendingEdits = useCallback(
+    async (confirmed = false) => {
+      const edits = Object.values(pendingEdits);
+      if (edits.length === 0) return;
+
+      if (!confirmed) {
+        const preview = edits.map((edit) => ({
+          where: buildWhere(edit.row),
+          data: Object.fromEntries(
+            Object.entries(edit.changes).map(([col, raw]) => [
+              col,
+              parseValueForColumn(col, raw),
+            ])
+          ),
+        }));
+        setConfirm({
+          type: "batch-update",
+          payload: { preview },
+          message: `Save ${pendingChangeCount} cell change(s) across ${edits.length} row(s)?`,
+        });
+        return;
+      }
+
+      setSavingEdits(true);
       try {
-        const parsed = parseValueForColumn(columnId, rawValue);
-        await handleUpdate({ [columnId]: parsed }, false, row);
+        let updated = 0;
+        for (const edit of edits) {
+          const data = Object.fromEntries(
+            Object.entries(edit.changes).map(([col, raw]) => [
+              col,
+              parseValueForColumn(col, raw),
+            ])
+          );
+          const res = await apiFetch<{ updated?: number; error?: string }>(
+            `api/tables/${encodeURIComponent(tableName)}/data`,
+            {
+              method: "PUT",
+              body: JSON.stringify({
+                data,
+                where: buildWhere(edit.row),
+                schema,
+                confirmed: true,
+              }),
+            }
+          );
+          if (res.error) throw new Error(res.error);
+          updated += res.updated ?? 0;
+        }
+        toast.success(`Updated ${updated} row(s)`);
+        setPendingEdits({});
+        setActiveCell(null);
+        refresh();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Update failed");
       } finally {
-        committingCellRef.current = false;
-        setEditingCell(null);
+        setSavingEdits(false);
       }
     },
-    [handleUpdate, parseValueForColumn]
+    [
+      pendingEdits,
+      pendingChangeCount,
+      buildWhere,
+      parseValueForColumn,
+      tableName,
+      schema,
+      refresh,
+    ]
   );
 
   const columns = useMemo<ColumnDef<Record<string, unknown>>[]>(() => {
@@ -337,33 +467,37 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         ),
         cell: ({ row, getValue }: { row: { original: Record<string, unknown> }; getValue: () => unknown }) => {
           const v = getValue();
-          const display = formatCellValue(v);
           const isPk = primaryKeys.includes(col);
           const columnMeta = getColumnMeta(col);
-          const isEditing =
-            editingCell !== null &&
-            editingCell.columnId === col &&
-            sameRow(editingCell.row, row.original, cols);
+          const rowKey = getRowKey(row.original, primaryKeys, cols);
+          const isModified = pendingEdits[rowKey]?.changes[col] !== undefined;
+          const editValue =
+            pendingEdits[rowKey]?.changes[col] ??
+            cellEditValue(v, columnMeta);
+          const display = isModified
+            ? editValue || "NULL"
+            : formatCellValue(v);
+          const isActive =
+            activeCell !== null &&
+            activeCell.rowKey === rowKey &&
+            activeCell.columnId === col;
 
-          if (isEditing && !readOnly && !isPk) {
+          if (isActive && !readOnly && !isPk) {
             return (
               <Input
                 autoFocus
-                value={editingCell.value}
+                value={editValue}
                 onChange={(e) =>
-                  setEditingCell((current) =>
-                    current ? { ...current, value: e.target.value } : current
-                  )
+                  updatePendingCell(row.original, col, e.target.value, cols)
                 }
-                onBlur={() => {
-                  void commitCellEdit(row.original, col, editingCell.value);
-                }}
+                onBlur={() => setActiveCell(null)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    void commitCellEdit(row.original, col, editingCell.value);
+                    setActiveCell(null);
                   } else if (e.key === "Escape") {
-                    setEditingCell(null);
+                    e.preventDefault();
+                    revertPendingCell(row.original, col, cols);
                   }
                 }}
                 className="h-7 min-w-[120px] px-1 text-xs"
@@ -375,25 +509,23 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
             <div
               role="button"
               tabIndex={readOnly || isPk ? -1 : 0}
-              className={`block w-full max-w-[200px] truncate text-left ${readOnly || isPk ? "cursor-default" : "cursor-text"} ${v === null ? "italic text-muted-foreground" : "text-foreground/90"}`}
+              className={`block w-full max-w-[200px] truncate text-left ${
+                readOnly || isPk ? "cursor-default" : "cursor-text"
+              } ${
+                isModified
+                  ? "rounded bg-amber-500/10 px-1 ring-1 ring-inset ring-amber-500/40"
+                  : ""
+              } ${v === null && !isModified ? "italic text-muted-foreground" : "text-foreground/90"}`}
               title={display}
               onDoubleClick={() => {
                 if (readOnly || isPk) return;
-                setEditingCell({
-                  row: row.original,
-                  columnId: col,
-                  value: cellEditValue(v, columnMeta),
-                });
+                setActiveCell({ rowKey, columnId: col });
               }}
               onKeyDown={(e) => {
                 if (readOnly || isPk) return;
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  setEditingCell({
-                    row: row.original,
-                    columnId: col,
-                    value: cellEditValue(v, columnMeta),
-                  });
+                  setActiveCell({ rowKey, columnId: col });
                 }
               }}
             >
@@ -430,9 +562,11 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
     primaryKeys,
     allSelected,
     rows,
-    editingCell,
+    pendingEdits,
+    activeCell,
     getColumnMeta,
-    commitCellEdit,
+    updatePendingCell,
+    revertPendingCell,
   ]);
 
   const table = useReactTable({
@@ -500,9 +634,14 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
 
   const handleConfirm = async () => {
     if (!confirm) return;
-    if (confirm.type === "update" && editRow) {
-      const { values } = confirm.payload as { values: Record<string, unknown> };
-      await handleUpdate(values, true);
+    if (confirm.type === "update") {
+      const { values, targetRow } = confirm.payload as {
+        values: Record<string, unknown>;
+        targetRow: Record<string, unknown>;
+      };
+      await handleUpdate(values, true, targetRow);
+    } else if (confirm.type === "batch-update") {
+      await savePendingEdits(true);
     } else if (confirm.type === "insert") {
       const { values } = confirm.payload as { values: Record<string, unknown> };
       await handleInsert(values, true);
@@ -524,6 +663,19 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
   useEffect(() => {
     setPageInput(String(page));
   }, [page]);
+
+  useEffect(() => {
+    cancelAllPendingEdits();
+  }, [
+    page,
+    pageSize,
+    sortColumn,
+    sortDirection,
+    appliedFilter,
+    tableName,
+    schema,
+    cancelAllPendingEdits,
+  ]);
 
   const jumpToPage = () => {
     const parsed = Number.parseInt(pageInput, 10);
@@ -757,6 +909,34 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         </table>
       </div>
 
+      {pendingChangeCount > 0 && !readOnly && (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-card px-4 py-2.5">
+          <span className="text-sm text-muted-foreground">
+            {pendingChangeCount} unsaved change{pendingChangeCount === 1 ? "" : "s"}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={cancelAllPendingEdits}
+              disabled={savingEdits}
+            >
+              <X className="h-4 w-4" />
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+              onClick={() => void savePendingEdits()}
+              disabled={savingEdits}
+            >
+              <ArrowUp className="h-4 w-4" />
+              {savingEdits ? "Saving…" : "Save changes"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <Dialog open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>
         <DialogContent onClose={() => setEditRow(null)} className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -767,7 +947,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
               columns={tableSchema.columns}
               initialValues={editRow}
               primaryKeys={primaryKeys}
-              onSubmit={(v) => handleUpdate(v)}
+              onSubmit={(v) => handleUpdate(v, false, editRow, true)}
             />
           )}
           <DialogFooter>
