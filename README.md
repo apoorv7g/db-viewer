@@ -100,3 +100,7 @@ npm run lint     # ESLint
 ## License
 
 MIT
+
+## Note 
+
+Since Vercel is Serverless the DB connection might drop randomly , it is suggested to build this application locally or deploy on any vps for reliable connectivity.
