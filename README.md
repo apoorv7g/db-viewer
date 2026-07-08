@@ -21,7 +21,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and enter your PostgreSQL connection URI.
+Open [http://localhost:3000/db-viewer/dashboard/](http://localhost:3000/db-viewer/dashboard/) and enter your PostgreSQL connection URI.
 
 ### Example URI
 
