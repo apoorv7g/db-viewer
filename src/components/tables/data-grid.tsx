@@ -784,7 +784,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
             {total.toLocaleString()} records
           </span>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             <Button
               variant="ghost"
               size="icon"
@@ -795,20 +795,22 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Select
+            <select
               value={String(pageSize)}
               onChange={(e) => {
                 setPageSize(Number(e.target.value));
                 setPage(1);
               }}
-              className="h-7 w-16 px-1 text-xs"
+              className="h-7 w-18 shrink-0 rounded-md border border-border bg-surface px-1.5 text-center text-xs tabular-nums text-foreground outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/30"
+              aria-label="Rows per page"
+              title="Rows per page"
             >
               {PAGE_SIZES.map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
               ))}
-            </Select>
+            </select>
             <Input
               type="number"
               min={1}
@@ -974,7 +976,10 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
       )}
 
       <Dialog open={!!editRow} onOpenChange={(o) => !o && setEditRow(null)}>
-        <DialogContent onClose={() => setEditRow(null)} className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          onClose={() => setEditRow(null)}
+          className="max-h-[90vh] max-w-4xl overflow-y-auto p-6 sm:p-7"
+        >
           <DialogHeader>
             <DialogTitle>Edit row</DialogTitle>
           </DialogHeader>
@@ -986,7 +991,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
               onSubmit={(v) => handleUpdate(v, false, editRow, true)}
             />
           )}
-          <DialogFooter>
+          <DialogFooter className="mt-5 border-t border-border pt-4">
             <Button variant="outline" onClick={() => setEditRow(null)}>
               Cancel
             </Button>

@@ -32,7 +32,7 @@ export function JsonEditor({ value, onChange, disabled }: JsonEditorProps) {
         value={value}
         onChange={(e) => handleChange(e.target.value)}
         disabled={disabled}
-        className="font-mono text-xs min-h-[100px]"
+        className="min-h-40 rounded-lg px-3 py-2.5 font-mono text-xs leading-6"
         placeholder="{}"
       />
       {error && <p className="text-xs text-destructive">{error}</p>}

@@ -23,7 +23,7 @@ const themeInitScript = `
 (function () {
   try {
     var t = localStorage.getItem("db-viewer-theme");
-    if (t === "light" || t === "dark") {
+    if (t === "light" || t === "dark" || t === "dracula") {
       document.documentElement.classList.add(t);
     } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
       document.documentElement.classList.add("dark");

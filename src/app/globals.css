@@ -54,6 +54,32 @@
   --table-row-hover: rgba(255, 255, 255, 0.02);
 }
 
+.dracula {
+  --background: #282a36;
+  --foreground: #f8f8f2;
+  --card: #303241;
+  --card-foreground: #f8f8f2;
+  --sidebar: #232530;
+  --sidebar-foreground: #cdd6f4;
+  --border: #44475a;
+  --border-subtle: #343746;
+  --muted: #8b93b7;
+  --muted-foreground: #aeb7d9;
+  --primary: #bd93f9;
+  --primary-hover: #a97ff2;
+  --primary-muted: rgba(189, 147, 249, 0.18);
+  --sidebar-active: #ff79c6;
+  --sidebar-active-bg: rgba(255, 121, 198, 0.14);
+  --sidebar-active-border: #ff79c6;
+  --surface: #343746;
+  --surface-hover: #3f4254;
+  --ring: #bd93f9;
+  --destructive: #ff5555;
+  --checkbox-bg: #303241;
+  --table-header: #303241;
+  --table-row-hover: rgba(248, 248, 242, 0.04);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

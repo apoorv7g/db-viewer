@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-export type Theme = "light" | "dark";
+export type Theme = "light" | "dark" | "dracula";
 
 const STORAGE_KEY = "db-viewer-theme";
 
@@ -22,14 +22,14 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function applyTheme(theme: Theme) {
-  document.documentElement.classList.remove("light", "dark");
+  document.documentElement.classList.remove("light", "dark", "dracula");
   document.documentElement.classList.add(theme);
 }
 
 function readStoredTheme(): Theme {
   if (typeof window === "undefined") return "dark";
   const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored === "light" || stored === "dark") return stored;
+  if (stored === "light" || stored === "dark" || stored === "dracula") return stored;
   return window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
@@ -50,7 +50,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const toggleTheme = useCallback(() => {
     setThemeState((current) => {
-      const next = current === "dark" ? "light" : "dark";
+      const next =
+        current === "light" ? "dark" : current === "dark" ? "dracula" : "light";
       localStorage.setItem(STORAGE_KEY, next);
       applyTheme(next);
       return next;

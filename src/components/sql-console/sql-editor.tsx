@@ -11,6 +11,7 @@ import {
   FileSpreadsheet,
   Loader2,
 } from "lucide-react";
+import type { Monaco } from "@monaco-editor/react";
 import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +21,7 @@ import { apiFetch } from "@/lib/api-client";
 import { formatDuration } from "@/lib/utils";
 import type { QueryResult, SqlSafetyAnalysis } from "@/types/database";
 import { useConnection } from "@/hooks/use-connection";
-import { useTheme } from "@/components/theme-provider";
+import { useTheme, type Theme } from "@/components/theme-provider";
 import { downloadFile, exportToCsv } from "@/lib/utils";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
@@ -32,6 +33,40 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
     </div>
   ),
 });
+
+const MONACO_THEME_BY_APP: Record<Theme, string> = {
+  light: "vs",
+  dark: "vs-dark",
+  dracula: "db-viewer-dracula",
+};
+
+function registerDraculaTheme(monaco: Monaco) {
+  monaco.editor.defineTheme("db-viewer-dracula", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "comment", foreground: "6272a4" },
+      { token: "string", foreground: "f1fa8c" },
+      { token: "keyword", foreground: "ff79c6" },
+      { token: "number", foreground: "bd93f9" },
+      { token: "type", foreground: "8be9fd" },
+      { token: "operator", foreground: "ff79c6" },
+      { token: "identifier", foreground: "f8f8f2" },
+    ],
+    colors: {
+      "editor.background": "#282a36",
+      "editor.foreground": "#f8f8f2",
+      "editorLineNumber.foreground": "#6272a4",
+      "editorLineNumber.activeForeground": "#f8f8f2",
+      "editor.selectionBackground": "#44475a",
+      "editor.lineHighlightBackground": "#343746",
+      "editorCursor.foreground": "#f8f8f2",
+      "editorWhitespace.foreground": "#44475a",
+      "editorIndentGuide.background": "#44475a",
+      "editor.selectionHighlightBackground": "#424450",
+    },
+  });
+}
 
 const HISTORY_KEY = "db-viewer-query-history";
 const MAX_HISTORY = 20;
@@ -179,9 +214,10 @@ export function SqlConsole() {
         <MonacoEditor
           height="176px"
           language="sql"
-          theme={theme === "dark" ? "vs-dark" : "vs"}
+          theme={MONACO_THEME_BY_APP[theme]}
           value={sql}
           onChange={(v) => setSql(v ?? "")}
+          beforeMount={registerDraculaTheme}
           options={{
             minimap: { enabled: false },
             fontSize: 13,
