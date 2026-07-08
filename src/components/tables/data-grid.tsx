@@ -14,7 +14,9 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Download,
+  Expand,
   Filter,
   Pencil,
   Plus,
@@ -25,11 +27,17 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import toast from "react-hot-toast";
 import { apiFetch } from "@/lib/api-client";
-import { downloadFile, exportToCsv, formatCellValue } from "@/lib/utils";
+import {
+  downloadFile,
+  exportToCsv,
+  formatCellValue,
+  formatExpandedCellValue,
+} from "@/lib/utils";
 import type { ColumnInfo, PaginatedData, TableSchema } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { ConfirmationModal } from "@/components/confirmation-modal";
 import {
   Dialog,
@@ -39,6 +47,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { RowForm } from "@/components/forms/row-form";
+import { JsonEditor } from "@/components/forms/json-editor";
 import { useConnection } from "@/hooks/use-connection";
 
 const PAGE_SIZES = [10, 50, 100, 500] as const;
@@ -55,6 +64,15 @@ function getRowKey(
 type PendingRowEdit = {
   row: Record<string, unknown>;
   changes: Record<string, string>;
+};
+
+type CellDialogState = {
+  row: Record<string, unknown>;
+  rowKey: string;
+  columnId: string;
+  value: unknown;
+  cols: string[];
+  editable: boolean;
 };
 
 function cellEditValue(value: unknown, column?: ColumnInfo): string {
@@ -90,12 +108,10 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
   const [selectedRows, setSelectedRows] = useState<Record<string, unknown>[]>([]);
   const [editRow, setEditRow] = useState<Record<string, unknown> | null>(null);
   const [pendingEdits, setPendingEdits] = useState<Record<string, PendingRowEdit>>({});
-  const [activeCell, setActiveCell] = useState<{
-    rowKey: string;
-    columnId: string;
-  } | null>(null);
   const [savingEdits, setSavingEdits] = useState(false);
   const [insertOpen, setInsertOpen] = useState(false);
+  const [cellDialog, setCellDialog] = useState<CellDialogState | null>(null);
+  const [cellDialogValue, setCellDialogValue] = useState("");
   const [confirm, setConfirm] = useState<{
     type: "update" | "batch-update" | "delete" | "insert";
     payload: unknown;
@@ -152,8 +168,14 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
   });
 
   const tableSchema = schemaQuery.data?.schema;
-  const primaryKeys: string[] = tableSchema?.primaryKeys ?? [];
-  const rows: Record<string, unknown>[] = dataQuery.data?.rows ?? [];
+  const primaryKeys = useMemo<string[]>(
+    () => tableSchema?.primaryKeys ?? [],
+    [tableSchema]
+  );
+  const rows = useMemo<Record<string, unknown>[]>(
+    () => dataQuery.data?.rows ?? [],
+    [dataQuery.data?.rows]
+  );
   const allSelected =
     rows.length > 0 &&
     rows.every((row) =>
@@ -284,7 +306,8 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         const existing = next[rowKey] ?? { row, changes: {} };
 
         if (rawValue === original) {
-          const { [columnId]: _removed, ...rest } = existing.changes;
+          const rest = { ...existing.changes };
+          delete rest[columnId];
           if (Object.keys(rest).length === 0) {
             delete next[rowKey];
           } else {
@@ -310,7 +333,8 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         if (!existing) return prev;
 
         const next = { ...prev };
-        const { [columnId]: _removed, ...rest } = existing.changes;
+        const rest = { ...existing.changes };
+        delete rest[columnId];
         if (Object.keys(rest).length === 0) {
           delete next[rowKey];
         } else {
@@ -318,14 +342,12 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         }
         return next;
       });
-      setActiveCell(null);
     },
     [primaryKeys]
   );
 
   const cancelAllPendingEdits = useCallback(() => {
     setPendingEdits({});
-    setActiveCell(null);
   }, []);
 
   const savePendingEdits = useCallback(
@@ -378,7 +400,6 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         }
         toast.success(`Updated ${updated} row(s)`);
         setPendingEdits({});
-        setActiveCell(null);
         refresh();
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Update failed");
@@ -477,59 +498,77 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
           const display = isModified
             ? editValue || "NULL"
             : formatCellValue(v);
-          const isActive =
-            activeCell !== null &&
-            activeCell.rowKey === rowKey &&
-            activeCell.columnId === col;
-
-          if (isActive && !readOnly && !isPk) {
-            return (
-              <Input
-                autoFocus
-                value={editValue}
-                onChange={(e) =>
-                  updatePendingCell(row.original, col, e.target.value, cols)
-                }
-                onBlur={() => setActiveCell(null)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    setActiveCell(null);
-                  } else if (e.key === "Escape") {
-                    e.preventDefault();
-                    revertPendingCell(row.original, col, cols);
-                  }
-                }}
-                className="h-7 min-w-[120px] px-1 text-xs"
-              />
-            );
-          }
+          const expanded = formatExpandedCellValue(v);
+          const canPreview =
+            expanded.mode === "json" ||
+            expanded.text.includes("\n") ||
+            expanded.text.length > 120;
 
           return (
-            <div
-              role="button"
-              tabIndex={readOnly || isPk ? -1 : 0}
-              className={`block w-full max-w-[200px] truncate text-left ${
-                readOnly || isPk ? "cursor-default" : "cursor-text"
-              } ${
-                isModified
-                  ? "rounded bg-amber-500/10 px-1 ring-1 ring-inset ring-amber-500/40"
-                  : ""
-              } ${v === null && !isModified ? "italic text-muted-foreground" : "text-foreground/90"}`}
-              title={display}
-              onDoubleClick={() => {
-                if (readOnly || isPk) return;
-                setActiveCell({ rowKey, columnId: col });
-              }}
-              onKeyDown={(e) => {
-                if (readOnly || isPk) return;
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setActiveCell({ rowKey, columnId: col });
-                }
-              }}
-            >
-              {display}
+            <div className="group flex max-w-[280px] items-start gap-1">
+              <div
+                role="button"
+                tabIndex={0}
+                className={`min-w-0 flex-1 truncate text-left ${
+                  readOnly || isPk ? "cursor-default" : "cursor-text"
+                } ${
+                  isModified
+                    ? "rounded bg-amber-500/10 px-1 ring-1 ring-inset ring-amber-500/40"
+                    : ""
+                } ${v === null && !isModified ? "italic text-muted-foreground" : "text-foreground/90"}`}
+                title={display}
+                onDoubleClick={() => {
+                  setCellDialog({
+                    row: row.original,
+                    rowKey,
+                    columnId: col,
+                    value: v,
+                    cols,
+                    editable: !readOnly && !isPk,
+                  });
+                  setCellDialogValue(editValue);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setCellDialog({
+                      row: row.original,
+                      rowKey,
+                      columnId: col,
+                      value: v,
+                      cols,
+                      editable: !readOnly && !isPk,
+                    });
+                    setCellDialogValue(editValue);
+                  }
+                }}
+              >
+                {display}
+              </div>
+              {canPreview ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 shrink-0 opacity-60 transition-opacity hover:opacity-100 group-hover:opacity-100"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCellDialog({
+                      row: row.original,
+                      rowKey,
+                      columnId: col,
+                      value: v,
+                      cols,
+                      editable: !readOnly && !isPk,
+                    });
+                    setCellDialogValue(editValue);
+                  }}
+                  title={`Open ${col} value`}
+                  aria-label={`Open ${col} value`}
+                >
+                  <Expand className="h-3 w-3" />
+                </Button>
+              ) : null}
             </div>
           );
         },
@@ -563,10 +602,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
     allSelected,
     rows,
     pendingEdits,
-    activeCell,
     getColumnMeta,
-    updatePendingCell,
-    revertPendingCell,
   ]);
 
   const table = useReactTable({
@@ -983,6 +1019,47 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!cellDialog} onOpenChange={(open) => !open && setCellDialog(null)}>
+        <DialogContent
+          onClose={() => setCellDialog(null)}
+          className="mx-4 max-h-[88vh] w-[min(92vw,1100px)] max-w-5xl overflow-hidden p-0"
+        >
+          {cellDialog && (
+            <CellEditorDialog
+              columnId={cellDialog.columnId}
+              column={getColumnMeta(cellDialog.columnId)}
+              value={cellDialog.value}
+              draftValue={cellDialogValue}
+              editable={cellDialog.editable}
+              onChange={setCellDialogValue}
+              onRevert={() => {
+                revertPendingCell(cellDialog.row, cellDialog.columnId, cellDialog.cols);
+                setCellDialogValue(
+                  cellEditValue(
+                    cellDialog.row[cellDialog.columnId],
+                    getColumnMeta(cellDialog.columnId)
+                  )
+                );
+              }}
+              onSave={() => {
+                updatePendingCell(
+                  cellDialog.row,
+                  cellDialog.columnId,
+                  cellDialogValue,
+                  cellDialog.cols
+                );
+                setCellDialog(null);
+              }}
+              onClose={() => setCellDialog(null)}
+              hasPendingChange={
+                pendingEdits[cellDialog.rowKey]?.changes[cellDialog.columnId] !==
+                undefined
+              }
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
       <ConfirmationModal
         open={!!confirm}
         onOpenChange={(o) => !o && setConfirm(null)}
@@ -993,6 +1070,113 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         onConfirm={handleConfirm}
         preview={confirm?.payload}
       />
+    </div>
+  );
+}
+
+function CellEditorDialog({
+  columnId,
+  column,
+  value,
+  draftValue,
+  editable,
+  hasPendingChange,
+  onChange,
+  onSave,
+  onRevert,
+  onClose,
+}: {
+  columnId: string;
+  column?: ColumnInfo;
+  value: unknown;
+  draftValue: string;
+  editable: boolean;
+  hasPendingChange: boolean;
+  onChange: (value: string) => void;
+  onSave: () => void;
+  onRevert: () => void;
+  onClose: () => void;
+}) {
+  const expanded = formatExpandedCellValue(value);
+  const lineCount = expanded.text.split("\n").length;
+  const charCount = expanded.text.length;
+  const udt = column?.udtName.toLowerCase();
+  const isJson = udt === "json" || udt === "jsonb";
+  const isBool = udt === "bool";
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(editable ? draftValue : expanded.text);
+      toast.success("Copied value");
+    } catch {
+      toast.error("Failed to copy value");
+    }
+  };
+
+  return (
+    <div className="flex max-h-[88vh] flex-col">
+      <div className="border-b border-border px-5 py-4">
+        <div className="flex items-start justify-between gap-4 pr-10">
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-semibold">{columnId}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {editable
+                ? "Edit value"
+                : expanded.mode === "json"
+                  ? "Formatted JSON"
+                  : "Expanded value"}{" "}
+              · {lineCount.toLocaleString()} line{lineCount === 1 ? "" : "s"} ·{" "}
+              {charCount.toLocaleString()} chars
+            </p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => void handleCopy()}>
+            <Copy className="h-3.5 w-3.5" />
+            Copy
+          </Button>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto p-5">
+        {editable ? (
+          isJson ? (
+            <JsonEditor value={draftValue} onChange={onChange} />
+          ) : isBool ? (
+            <Select
+              value={draftValue === "" ? "false" : draftValue}
+              onChange={(e) => onChange(e.target.value)}
+              className="w-40"
+            >
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </Select>
+          ) : (
+            <Textarea
+              autoFocus
+              value={draftValue}
+              onChange={(e) => onChange(e.target.value)}
+              className="min-h-[55vh] font-mono text-xs leading-6"
+            />
+          )
+        ) : (
+          <pre className="min-h-full overflow-auto rounded-lg border border-border bg-surface p-4 font-mono text-xs leading-6 whitespace-pre-wrap wrap-break-word text-foreground">
+            {expanded.text}
+          </pre>
+        )}
+      </div>
+      <DialogFooter className="border-t border-border px-5 py-4">
+        <Button variant="outline" onClick={onClose}>
+          Close
+        </Button>
+        {editable ? (
+          <>
+            {hasPendingChange ? (
+              <Button variant="ghost" onClick={onRevert}>
+                Revert
+              </Button>
+            ) : null}
+            <Button onClick={onSave}>Apply</Button>
+          </>
+        ) : null}
+      </DialogFooter>
     </div>
   );
 }
