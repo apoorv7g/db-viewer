@@ -2,7 +2,12 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { apiFetch, setStoredConnectionId } from "@/lib/api-client";
+import {
+  apiFetch,
+  clearStoredDatabases,
+  getStoredConnectionId,
+  setStoredConnectionId,
+} from "@/lib/api-client";
 import type { ConnectionSession } from "@/types/database";
 
 export function useConnection() {
@@ -46,12 +51,18 @@ export function useConnection() {
         body: JSON.stringify({ database }),
       }),
     onSuccess: (data) => {
-      // The connection id stays the same, but every table/schema/row query
-      // cached under it now points at data from the previous database.
-      queryClient.clear();
+      // Update the session first, and as its own synchronous cache write,
+      // so the UI (which remounts on session identity) reacts immediately
+      // instead of waiting on the broader cache clear below.
       queryClient.setQueryData(["connection"], {
         connected: true,
         session: data.session,
+      });
+      // The connection id stays the same, but every table/schema/row query
+      // cached under it now points at data from the previous database —
+      // drop everything else so the remounted UI starts from a clean slate.
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] !== "connection",
       });
       toast.success(`Switched to ${data.session.database}`);
     },
@@ -62,6 +73,8 @@ export function useConnection() {
     mutationFn: () =>
       apiFetch("api/connect", { method: "DELETE" }),
     onSuccess: () => {
+      const connectionId = getStoredConnectionId();
+      if (connectionId) clearStoredDatabases(connectionId);
       setStoredConnectionId(null);
       queryClient.setQueryData(["connection"], { connected: false });
       queryClient.clear();

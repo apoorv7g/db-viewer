@@ -1,8 +1,13 @@
 "use client";
 
+import { useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { apiFetch } from "@/lib/api-client";
+import {
+  apiFetch,
+  getStoredDatabases,
+  setStoredDatabases,
+} from "@/lib/api-client";
 import type { DatabaseInfo } from "@/types/database";
 
 export function useDatabases() {
@@ -23,14 +28,27 @@ export function useDatabases() {
   };
 }
 
-/** Lists the databases visible on the server behind the *current* connection. */
-export function useConnectionDatabases(enabled: boolean) {
+/**
+ * Lists the databases visible on the server behind the *current* connection.
+ * Backed by sessionStorage (keyed by connection id) so the list survives
+ * database switches and page reloads without refetching every table page.
+ */
+export function useConnectionDatabases(enabled: boolean, connectionId?: string) {
+  const cached = connectionId ? getStoredDatabases(connectionId) : null;
+
   const query = useQuery({
-    queryKey: ["databases", "current"],
+    queryKey: ["databases", "current", connectionId],
     queryFn: () => apiFetch<{ databases: DatabaseInfo[] }>("api/databases"),
-    enabled,
-    staleTime: 30000,
+    enabled: enabled && !!connectionId,
+    staleTime: Infinity,
+    initialData: cached ? { databases: cached } : undefined,
   });
+
+  useEffect(() => {
+    if (connectionId && query.data?.databases) {
+      setStoredDatabases(connectionId, query.data.databases);
+    }
+  }, [connectionId, query.data]);
 
   return {
     databases: query.data?.databases,

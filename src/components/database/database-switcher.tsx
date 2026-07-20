@@ -5,12 +5,13 @@ import { Check, ChevronsUpDown, Database, Loader2 } from "lucide-react";
 import { cn, formatBytes } from "@/lib/utils";
 import { useConnection } from "@/hooks/use-connection";
 import { useConnectionDatabases } from "@/hooks/use-databases";
+import type { DatabaseInfo } from "@/types/database";
 
 export function DatabaseSwitcher() {
   const { session, switchDatabase, isSwitchingDatabase } = useConnection();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { databases, isLoading } = useConnectionDatabases(open);
+  const { databases, isLoading } = useConnectionDatabases(open, session?.id);
 
   useEffect(() => {
     if (!open) return;
@@ -60,7 +61,7 @@ export function DatabaseSwitcher() {
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-border bg-card p-1.5 shadow-xl shadow-black/10 dark:shadow-black/30">
+        <div className="absolute left-0 top-full z-60 mt-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-border bg-card p-1.5 shadow-xl shadow-black/10 dark:shadow-black/30">
           <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Switch database
           </p>
@@ -70,7 +71,7 @@ export function DatabaseSwitcher() {
               Loading databases…
             </div>
           ) : databases && databases.length > 0 ? (
-            databases.map((db) => {
+            databases.map((db: DatabaseInfo) => {
               const isCurrent = db.name === session.database;
               return (
                 <button

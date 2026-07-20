@@ -21,13 +21,7 @@ import {
 type Tab = "data" | "schema" | "sql";
 
 export default function DashboardPage() {
-  const { connected, isLoading } = useConnection();
-  const [selectedTable, setSelectedTable] = useState<{
-    schema: string;
-    name: string;
-  } | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("data");
-  const [sqlOnly, setSqlOnly] = useState(false);
+  const { session, connected, isLoading } = useConnection();
 
   if (isLoading) {
     return (
@@ -63,6 +57,20 @@ export default function DashboardPage() {
       </div>
     );
   }
+
+  // Remounting on connection/database change gives switching a database the
+  // same fresh-start UI as connecting for the first time (cleared selection,
+  // reset tabs, no stale component state carried over).
+  return <DashboardContent key={`${session?.id}:${session?.database}`} />;
+}
+
+function DashboardContent() {
+  const [selectedTable, setSelectedTable] = useState<{
+    schema: string;
+    name: string;
+  } | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>("data");
+  const [sqlOnly, setSqlOnly] = useState(false);
 
   const sqlActive = sqlOnly && !selectedTable;
   const tableLabel = selectedTable

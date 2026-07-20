@@ -19,9 +19,9 @@ export function ConnectionStatus({ compact }: ConnectionStatusProps) {
     return (
       <div className="flex min-w-0 items-center gap-2 text-xs sm:text-sm">
         <Circle className="h-2 w-2 shrink-0 fill-primary text-primary" />
-        <span className="flex min-w-0 items-center truncate text-muted-foreground">
+        <span className="flex min-w-0 items-center text-muted-foreground">
           <DatabaseSwitcher />
-          <span className="mx-1 opacity-50">@</span>
+          <span className="mx-1 shrink-0 opacity-50">@</span>
           <span className="truncate">{session.host}</span>
         </span>
         {session.readOnly && (
