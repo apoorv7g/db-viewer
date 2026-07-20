@@ -39,6 +39,25 @@ export function useConnection() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const switchDatabaseMutation = useMutation({
+    mutationFn: (database: string) =>
+      apiFetch<{ session: ConnectionSession }>("api/connect/switch", {
+        method: "POST",
+        body: JSON.stringify({ database }),
+      }),
+    onSuccess: (data) => {
+      // The connection id stays the same, but every table/schema/row query
+      // cached under it now points at data from the previous database.
+      queryClient.clear();
+      queryClient.setQueryData(["connection"], {
+        connected: true,
+        session: data.session,
+      });
+      toast.success(`Switched to ${data.session.database}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const disconnectMutation = useMutation({
     mutationFn: () =>
       apiFetch("api/connect", { method: "DELETE" }),
@@ -58,5 +77,7 @@ export function useConnection() {
     connect: connectMutation.mutateAsync,
     disconnect: disconnectMutation.mutateAsync,
     isConnecting: connectMutation.isPending,
+    switchDatabase: switchDatabaseMutation.mutateAsync,
+    isSwitchingDatabase: switchDatabaseMutation.isPending,
   };
 }

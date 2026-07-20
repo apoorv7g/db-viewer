@@ -1,6 +1,7 @@
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 import { randomUUID } from "crypto";
 import type { ConnectionConfig, ConnectionSession, DatabaseInfo } from "@/types/database";
+import { withDatabase } from "@/lib/uri";
 
 const MAX_POOLS = 50;
 const POOL_MAX_CONNECTIONS = 5;
@@ -114,6 +115,38 @@ export async function testConnection(uri: string): Promise<{ ok: boolean; error?
   }
 }
 
+async function queryDatabaseList(client: PoolClient): Promise<DatabaseInfo[]> {
+  const result = await client.query<{ datname: string; owner: string }>(
+    `SELECT datname, pg_catalog.pg_get_userbyid(datdba) AS owner
+     FROM pg_database
+     WHERE datistemplate = false AND datallowconn = true
+     ORDER BY datname ASC`
+  );
+
+  // pg_database_size() throws for databases the current role can't
+  // connect to (common on managed providers), which would otherwise
+  // abort the whole query. Fetch sizes separately and degrade gracefully.
+  const sizes = new Map<string, number>();
+  try {
+    const sizeResult = await client.query<{ datname: string; size_bytes: string }>(
+      `SELECT datname, pg_database_size(datname) AS size_bytes
+       FROM pg_database
+       WHERE datistemplate = false AND datallowconn = true`
+    );
+    for (const row of sizeResult.rows) {
+      sizes.set(row.datname, Number(row.size_bytes));
+    }
+  } catch {
+    // leave sizes empty
+  }
+
+  return result.rows.map((row) => ({
+    name: row.datname,
+    owner: row.owner,
+    sizeBytes: sizes.get(row.datname) ?? null,
+  }));
+}
+
 export async function listDatabases(uri: string): Promise<DatabaseInfo[]> {
   const pool = new Pool({
     connectionString: uri,
@@ -123,35 +156,7 @@ export async function listDatabases(uri: string): Promise<DatabaseInfo[]> {
   try {
     const client = await pool.connect();
     try {
-      const result = await client.query<{ datname: string; owner: string }>(
-        `SELECT datname, pg_catalog.pg_get_userbyid(datdba) AS owner
-         FROM pg_database
-         WHERE datistemplate = false AND datallowconn = true
-         ORDER BY datname ASC`
-      );
-
-      // pg_database_size() throws for databases the current role can't
-      // connect to (common on managed providers), which would otherwise
-      // abort the whole query. Fetch sizes separately and degrade gracefully.
-      const sizes = new Map<string, number>();
-      try {
-        const sizeResult = await client.query<{ datname: string; size_bytes: string }>(
-          `SELECT datname, pg_database_size(datname) AS size_bytes
-           FROM pg_database
-           WHERE datistemplate = false AND datallowconn = true`
-        );
-        for (const row of sizeResult.rows) {
-          sizes.set(row.datname, Number(row.size_bytes));
-        }
-      } catch {
-        // leave sizes empty
-      }
-
-      return result.rows.map((row) => ({
-        name: row.datname,
-        owner: row.owner,
-        sizeBytes: sizes.get(row.datname) ?? null,
-      }));
+      return await queryDatabaseList(client);
     } finally {
       client.release();
     }
@@ -161,6 +166,78 @@ export async function listDatabases(uri: string): Promise<DatabaseInfo[]> {
   } finally {
     await pool.end();
   }
+}
+
+export async function listDatabasesForConnection(
+  connectionId: string
+): Promise<DatabaseInfo[]> {
+  const entry = getPoolEntry(connectionId);
+  if (!entry) {
+    throw new Error("Not connected. Please connect to a database first.");
+  }
+  const client = await entry.pool.connect();
+  try {
+    return await queryDatabaseList(client);
+  } finally {
+    client.release();
+  }
+}
+
+export async function switchDatabase(
+  connectionId: string,
+  databaseName: string
+): Promise<ConnectionSession> {
+  const entry = getPoolEntry(connectionId);
+  if (!entry) {
+    throw new Error("Not connected. Please connect to a database first.");
+  }
+
+  const connectionString = (entry.pool.options as { connectionString?: string })
+    .connectionString;
+  if (!connectionString) {
+    throw new Error("Unable to determine connection URI for this session.");
+  }
+
+  const oldSession = entry.session;
+  const targetUri = withDatabase(connectionString, databaseName);
+
+  const pool = new Pool({
+    connectionString: targetUri,
+    max: POOL_MAX_CONNECTIONS,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+    statement_timeout: oldSession.queryTimeoutMs,
+    query_timeout: oldSession.queryTimeoutMs,
+    application_name: "db-viewer",
+  });
+
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query("SELECT 1");
+      if (oldSession.readOnly) {
+        await client.query("SET default_transaction_read_only = on");
+      }
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    await pool.end().catch(() => {});
+    const message = err instanceof Error ? err.message : "Failed to switch database";
+    throw new Error(message);
+  }
+
+  const { database } = parseUri(targetUri);
+  const session: ConnectionSession = {
+    ...oldSession,
+    database,
+    connectedAt: Date.now(),
+  };
+
+  pools.set(connectionId, { pool, session, lastUsed: Date.now() });
+  await entry.pool.end().catch(() => {});
+
+  return session;
 }
 
 export async function disconnect(connectionId: string): Promise<boolean> {

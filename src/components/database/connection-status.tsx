@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DatabaseSwitcher } from "@/components/database/database-switcher";
 import { useConnection } from "@/hooks/use-connection";
 import { LogOut, Shield, Circle } from "lucide-react";
 
@@ -18,10 +19,10 @@ export function ConnectionStatus({ compact }: ConnectionStatusProps) {
     return (
       <div className="flex min-w-0 items-center gap-2 text-xs sm:text-sm">
         <Circle className="h-2 w-2 shrink-0 fill-primary text-primary" />
-        <span className="truncate text-muted-foreground">
-          <span className="font-medium text-foreground">{session.database}</span>
+        <span className="flex min-w-0 items-center truncate text-muted-foreground">
+          <DatabaseSwitcher />
           <span className="mx-1 opacity-50">@</span>
-          {session.host}
+          <span className="truncate">{session.host}</span>
         </span>
         {session.readOnly && (
           <Badge variant="warning" className="hidden shrink-0 gap-1 sm:inline-flex">

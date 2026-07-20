@@ -26,6 +26,10 @@ export const listDatabasesSchema = z.object({
     }),
 });
 
+export const switchDatabaseSchema = z.object({
+  database: z.string().min(1, "Database name is required"),
+});
+
 export const querySchema = z.object({
   sql: z.string().min(1, "SQL query is required"),
   limit: z.number().min(1).max(10000).optional(),
