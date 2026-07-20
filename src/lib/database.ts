@@ -1,6 +1,6 @@
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 import { randomUUID } from "crypto";
-import type { ConnectionConfig, ConnectionSession } from "@/types/database";
+import type { ConnectionConfig, ConnectionSession, DatabaseInfo } from "@/types/database";
 
 const MAX_POOLS = 50;
 const POOL_MAX_CONNECTIONS = 5;
@@ -114,12 +114,61 @@ export async function testConnection(uri: string): Promise<{ ok: boolean; error?
   }
 }
 
+export async function listDatabases(uri: string): Promise<DatabaseInfo[]> {
+  const pool = new Pool({
+    connectionString: uri,
+    max: 1,
+    connectionTimeoutMillis: 10000,
+  });
+  try {
+    const client = await pool.connect();
+    try {
+      const result = await client.query<{ datname: string; owner: string }>(
+        `SELECT datname, pg_catalog.pg_get_userbyid(datdba) AS owner
+         FROM pg_database
+         WHERE datistemplate = false AND datallowconn = true
+         ORDER BY datname ASC`
+      );
+
+      // pg_database_size() throws for databases the current role can't
+      // connect to (common on managed providers), which would otherwise
+      // abort the whole query. Fetch sizes separately and degrade gracefully.
+      const sizes = new Map<string, number>();
+      try {
+        const sizeResult = await client.query<{ datname: string; size_bytes: string }>(
+          `SELECT datname, pg_database_size(datname) AS size_bytes
+           FROM pg_database
+           WHERE datistemplate = false AND datallowconn = true`
+        );
+        for (const row of sizeResult.rows) {
+          sizes.set(row.datname, Number(row.size_bytes));
+        }
+      } catch {
+        // leave sizes empty
+      }
+
+      return result.rows.map((row) => ({
+        name: row.datname,
+        owner: row.owner,
+        sizeBytes: sizes.get(row.datname) ?? null,
+      }));
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to list databases";
+    throw new Error(message);
+  } finally {
+    await pool.end();
+  }
+}
+
 export async function disconnect(connectionId: string): Promise<boolean> {
   const entry = pools.get(connectionId);
   if (!entry) return false;
 
   // Guard against double-ending the same pool, which pg does not allow.
-  if ((entry.pool as any).ended) {
+  if ((entry.pool as unknown as { ended?: boolean }).ended) {
     pools.delete(connectionId);
     return false;
   }

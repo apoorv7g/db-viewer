@@ -39,7 +39,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("dark");
 
   useEffect(() => {
-    setThemeState(readStoredTheme());
+    const syncFromStorage = () => setThemeState(readStoredTheme());
+    syncFromStorage();
+    window.addEventListener("storage", syncFromStorage);
+    return () => window.removeEventListener("storage", syncFromStorage);
   }, []);
 
   const setTheme = useCallback((next: Theme) => {

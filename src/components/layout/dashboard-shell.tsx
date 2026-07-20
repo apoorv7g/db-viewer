@@ -37,7 +37,10 @@ export function DashboardShell({ sidebar, children }: DashboardShellProps) {
   const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   useEffect(() => {
-    setSidebarWidth(readStoredSidebarWidth());
+    const syncFromStorage = () => setSidebarWidth(readStoredSidebarWidth());
+    syncFromStorage();
+    window.addEventListener("storage", syncFromStorage);
+    return () => window.removeEventListener("storage", syncFromStorage);
   }, []);
 
   useEffect(() => {

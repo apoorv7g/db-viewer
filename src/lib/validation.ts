@@ -16,6 +16,16 @@ export const connectionSchema = z.object({
   resultLimit: z.number().min(1).max(10000),
 });
 
+export const listDatabasesSchema = z.object({
+  uri: z
+    .string()
+    .min(1, "Connection URI is required")
+    .refine((val) => postgresUriRegex.test(val), {
+      message:
+        "Invalid PostgreSQL URI. Expected: postgresql://user:pass@host:port/database",
+    }),
+});
+
 export const querySchema = z.object({
   sql: z.string().min(1, "SQL query is required"),
   limit: z.number().min(1).max(10000).optional(),

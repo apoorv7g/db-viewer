@@ -15,6 +15,12 @@ export interface ConnectionSession {
   connectedAt: number;
 }
 
+export interface DatabaseInfo {
+  name: string;
+  owner: string;
+  sizeBytes: number | null;
+}
+
 export interface TableInfo {
   schema: string;
   name: string;

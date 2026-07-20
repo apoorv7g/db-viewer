@@ -104,7 +104,10 @@ export function SqlConsole() {
   const [pendingSql, setPendingSql] = useState("");
 
   useEffect(() => {
-    setHistory(loadHistory());
+    const syncFromStorage = () => setHistory(loadHistory());
+    syncFromStorage();
+    window.addEventListener("storage", syncFromStorage);
+    return () => window.removeEventListener("storage", syncFromStorage);
   }, []);
 
   const runQuery = async (querySql: string, confirmed = false) => {
