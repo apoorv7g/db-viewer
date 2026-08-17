@@ -35,6 +35,12 @@ function resolveSsl(uri: string): false | { rejectUnauthorized: boolean } {
   return false;
 }
 
+function stripSslMode(uri: string): string {
+  const url = new URL(uri);
+  url.searchParams.delete("sslmode");
+  return url.toString();
+}
+
 function cleanupStalePools() {
   const now = Date.now();
   for (const [id, entry] of pools) {
@@ -71,7 +77,7 @@ export async function createConnection(
   const resultLimit = config.resultLimit ?? 1000;
 
   const pool = new Pool({
-    connectionString: config.uri,
+    connectionString: stripSslMode(config.uri),
     ssl: resolveSsl(config.uri),
     max: POOL_MAX_CONNECTIONS,
     idleTimeoutMillis: 30000,
@@ -108,7 +114,7 @@ export async function createConnection(
 
 export async function testConnection(uri: string): Promise<{ ok: boolean; error?: string }> {
   const pool = new Pool({
-    connectionString: uri,
+    connectionString: stripSslMode(uri),
     ssl: resolveSsl(uri),
     max: 1,
     connectionTimeoutMillis: 10000,
@@ -163,7 +169,7 @@ async function queryDatabaseList(client: PoolClient): Promise<DatabaseInfo[]> {
 
 export async function listDatabases(uri: string): Promise<DatabaseInfo[]> {
   const pool = new Pool({
-    connectionString: uri,
+    connectionString: stripSslMode(uri),
     ssl: resolveSsl(uri),
     max: 1,
     connectionTimeoutMillis: 10000,
@@ -217,7 +223,7 @@ export async function switchDatabase(
   const targetUri = withDatabase(connectionString, databaseName);
 
   const pool = new Pool({
-    connectionString: targetUri,
+    connectionString: stripSslMode(targetUri),
     ssl: resolveSsl(targetUri),
     max: POOL_MAX_CONNECTIONS,
     idleTimeoutMillis: 30000,
