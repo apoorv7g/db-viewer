@@ -11,6 +11,7 @@ interface PoolEntry {
   pool: Pool;
   session: ConnectionSession;
   lastUsed: number;
+  uri: string;
 }
 
 const pools = new Map<string, PoolEntry>();
@@ -108,7 +109,7 @@ export async function createConnection(
     connectedAt: Date.now(),
   };
 
-  pools.set(id, { pool, session, lastUsed: Date.now() });
+  pools.set(id, { pool, session, lastUsed: Date.now(), uri: config.uri });
   return session;
 }
 
@@ -213,14 +214,8 @@ export async function switchDatabase(
     throw new Error("Not connected. Please connect to a database first.");
   }
 
-  const connectionString = (entry.pool.options as { connectionString?: string })
-    .connectionString;
-  if (!connectionString) {
-    throw new Error("Unable to determine connection URI for this session.");
-  }
-
   const oldSession = entry.session;
-  const targetUri = withDatabase(connectionString, databaseName);
+  const targetUri = withDatabase(entry.uri, databaseName);
 
   const pool = new Pool({
     connectionString: stripSslMode(targetUri),
@@ -256,7 +251,7 @@ export async function switchDatabase(
     connectedAt: Date.now(),
   };
 
-  pools.set(connectionId, { pool, session, lastUsed: Date.now() });
+  pools.set(connectionId, { pool, session, lastUsed: Date.now(), uri: targetUri });
   await entry.pool.end().catch(() => {});
 
   return session;
