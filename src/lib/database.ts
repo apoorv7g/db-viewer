@@ -23,6 +23,18 @@ function parseUri(uri: string): { host: string; database: string } {
   };
 }
 
+function resolveSsl(uri: string): false | { rejectUnauthorized: boolean } {
+  const sslmode = new URL(uri).searchParams.get("sslmode");
+
+  if (sslmode === "verify-ca" || sslmode === "verify-full") {
+    return { rejectUnauthorized: true };
+  }
+  if (sslmode === "require" || sslmode === "prefer" || sslmode === "allow") {
+    return { rejectUnauthorized: false };
+  }
+  return false;
+}
+
 function cleanupStalePools() {
   const now = Date.now();
   for (const [id, entry] of pools) {
@@ -60,6 +72,7 @@ export async function createConnection(
 
   const pool = new Pool({
     connectionString: config.uri,
+    ssl: resolveSsl(config.uri),
     max: POOL_MAX_CONNECTIONS,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
@@ -96,6 +109,7 @@ export async function createConnection(
 export async function testConnection(uri: string): Promise<{ ok: boolean; error?: string }> {
   const pool = new Pool({
     connectionString: uri,
+    ssl: resolveSsl(uri),
     max: 1,
     connectionTimeoutMillis: 10000,
   });
@@ -150,6 +164,7 @@ async function queryDatabaseList(client: PoolClient): Promise<DatabaseInfo[]> {
 export async function listDatabases(uri: string): Promise<DatabaseInfo[]> {
   const pool = new Pool({
     connectionString: uri,
+    ssl: resolveSsl(uri),
     max: 1,
     connectionTimeoutMillis: 10000,
   });
@@ -203,6 +218,7 @@ export async function switchDatabase(
 
   const pool = new Pool({
     connectionString: targetUri,
+    ssl: resolveSsl(targetUri),
     max: POOL_MAX_CONNECTIONS,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
