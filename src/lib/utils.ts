@@ -18,6 +18,16 @@ export function formatCellValue(value: unknown): string {
   return String(value);
 }
 
+// Grid cells only ever show a truncated preview (the expand dialog reads the
+// untruncated value from formatExpandedCellValue), so large text/json/bytea
+// columns don't blow up the DOM across hundreds of rows and crash the tab.
+const GRID_CELL_MAX_CHARS = 500;
+
+export function truncateForGrid(text: string): string {
+  if (text.length <= GRID_CELL_MAX_CHARS) return text;
+  return `${text.slice(0, GRID_CELL_MAX_CHARS)}… (truncated, open cell to view full value)`;
+}
+
 export function tryParseJsonString(value: string): unknown | null {
   const trimmed = value.trim();
   if (!trimmed) return null;

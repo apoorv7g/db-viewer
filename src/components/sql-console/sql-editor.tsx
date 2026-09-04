@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmationModal } from "@/components/confirmation-modal";
 import { apiFetch } from "@/lib/api-client";
-import { formatDuration } from "@/lib/utils";
+import { formatDuration, truncateForGrid } from "@/lib/utils";
 import type { QueryResult, SqlSafetyAnalysis } from "@/types/database";
 import { useConnection } from "@/hooks/use-connection";
 import { useTheme, type Theme } from "@/components/theme-provider";
@@ -292,10 +292,12 @@ export function SqlConsole() {
                       >
                         {row[f.name] === null ? (
                           <span className="italic text-zinc-600">NULL</span>
-                        ) : typeof row[f.name] === "object" ? (
-                          JSON.stringify(row[f.name])
                         ) : (
-                          String(row[f.name])
+                          truncateForGrid(
+                            typeof row[f.name] === "object"
+                              ? JSON.stringify(row[f.name])
+                              : String(row[f.name])
+                          )
                         )}
                       </td>
                     ))}

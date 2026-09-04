@@ -32,6 +32,7 @@ import {
   exportToCsv,
   formatCellValue,
   formatExpandedCellValue,
+  truncateForGrid,
 } from "@/lib/utils";
 import type { ColumnInfo, PaginatedData, TableSchema } from "@/types/database";
 import { Button } from "@/components/ui/button";
@@ -495,9 +496,9 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
           const editValue =
             pendingEdits[rowKey]?.changes[col] ??
             cellEditValue(v, columnMeta);
-          const display = isModified
-            ? editValue || "NULL"
-            : formatCellValue(v);
+          const display = truncateForGrid(
+            isModified ? editValue || "NULL" : formatCellValue(v)
+          );
           const expanded = formatExpandedCellValue(v);
           const canPreview =
             expanded.mode === "json" ||
