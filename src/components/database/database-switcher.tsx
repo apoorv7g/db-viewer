@@ -55,13 +55,15 @@ export function DatabaseSwitcher() {
         {isSwitchingDatabase ? (
           <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
         ) : (
-          <span className="truncate">{session.database}</span>
+          <span className="truncate" title={session.database}>
+            {session.database}
+          </span>
         )}
         <ChevronsUpDown className="h-3 w-3 shrink-0 text-muted-foreground" />
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-60 mt-1 max-h-64 w-64 overflow-y-auto rounded-lg border border-border bg-card p-1.5 shadow-xl shadow-black/10 dark:shadow-black/30">
+        <div className="absolute left-0 top-full z-60 mt-1 max-h-64 w-max min-w-64 max-w-96 overflow-y-auto rounded-lg border border-border bg-card p-1.5 shadow-xl shadow-black/10 dark:shadow-black/30">
           <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Switch database
           </p>
@@ -85,7 +87,9 @@ export function DatabaseSwitcher() {
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     <Database className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="truncate font-mono">{db.name}</span>
+                    <span className="truncate font-mono" title={db.name}>
+                      {db.name}
+                    </span>
                   </span>
                   {isCurrent ? (
                     <Check className="h-3.5 w-3.5 shrink-0 text-primary" />

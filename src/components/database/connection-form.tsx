@@ -150,7 +150,9 @@ export function ConnectionForm() {
                     >
                       <span className="flex items-center gap-2 truncate">
                         <Database className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        <span className="truncate font-mono">{db.name}</span>
+                        <span className="truncate font-mono" title={db.name}>
+                          {db.name}
+                        </span>
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground">
                         {formatBytes(db.sizeBytes)}
