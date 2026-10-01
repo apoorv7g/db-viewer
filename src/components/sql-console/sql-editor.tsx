@@ -95,7 +95,12 @@ export function SqlConsole() {
   const { theme } = useTheme();
   const { session } = useConnection();
   const [sql, setSql] = useState("SELECT 1;");
-  const [limit, setLimit] = useState(session?.resultLimit ?? 1000);
+  // Kept as text so the field can be cleared/retyped; parsed only when running.
+  const [limitText, setLimitText] = useState(String(session?.resultLimit ?? 1000));
+  const limit = Math.min(
+    10000,
+    Math.max(1, Number.parseInt(limitText, 10) || session?.resultLimit || 1000)
+  );
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<QueryResponse | null>(null);
   const [history, setHistory] = useState<string[]>([]);
@@ -183,14 +188,14 @@ export function SqlConsole() {
           History
         </Button>
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-zinc-500">Limit</span>
+          <span className="text-xs text-muted-foreground">Limit</span>
           <Input
-            type="number"
+            type="text"
+            inputMode="numeric"
             className="w-20 sm:w-24"
-            value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
-            min={1}
-            max={10000}
+            value={limitText}
+            onChange={(e) => setLimitText(e.target.value.replace(/\D/g, "").slice(0, 5))}
+            onBlur={() => setLimitText(String(limit))}
           />
         </div>
       </div>
@@ -201,7 +206,7 @@ export function SqlConsole() {
             <button
               key={i}
               type="button"
-              className="block w-full rounded-md p-2 text-left font-mono text-xs text-zinc-400 transition-colors hover:bg-surface-hover hover:text-zinc-200 truncate"
+              className="block w-full rounded-md p-2 text-left font-mono text-xs text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground truncate"
               onClick={() => {
                 setSql(q);
                 setShowHistory(false);
@@ -224,7 +229,11 @@ export function SqlConsole() {
           options={{
             minimap: { enabled: false },
             fontSize: 13,
-            fontFamily: "var(--font-geist-mono), monospace",
+            fontFamily:
+              'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+            automaticLayout: true,
+            readOnly: false,
+            domReadOnly: false,
             wordWrap: "on",
             scrollBeyondLastLine: false,
             padding: { top: 12, bottom: 12 },
@@ -273,7 +282,7 @@ export function SqlConsole() {
               <thead className="sticky top-0 z-10">
                 <tr className="border-b border-border">
                   {result.fields.map((f) => (
-                    <th key={f.name} className="px-3 py-2.5 whitespace-nowrap">
+                    <th key={f.name} className="px-3 whitespace-nowrap">
                       {f.name}
                     </th>
                   ))}
@@ -291,7 +300,7 @@ export function SqlConsole() {
                         className="max-w-xs truncate font-mono text-xs"
                       >
                         {row[f.name] === null ? (
-                          <span className="italic text-zinc-600">NULL</span>
+                          <span className="italic text-muted">NULL</span>
                         ) : (
                           truncateForGrid(
                             typeof row[f.name] === "object"

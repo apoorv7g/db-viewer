@@ -18,6 +18,44 @@ export function formatCellValue(value: unknown): string {
   return String(value);
 }
 
+const PREVIEW_MAX_CHARS = 120;
+const objectPreviewCache = new WeakMap<object, string>();
+
+/**
+ * Cheap, bounded preview for a grid cell. Never builds a pretty-printed or
+ * full-length string for big values; objects are serialized once and cached.
+ */
+export function previewCellValue(value: unknown): {
+  text: string;
+  expandable: boolean;
+} {
+  if (value === null || value === undefined) {
+    return { text: "NULL", expandable: false };
+  }
+  let text: string;
+  let expandable = false;
+  if (typeof value === "object") {
+    expandable = true;
+    let cached = objectPreviewCache.get(value);
+    if (cached === undefined) {
+      try {
+        cached = JSON.stringify(value) ?? String(value);
+      } catch {
+        cached = String(value);
+      }
+      objectPreviewCache.set(value, cached);
+    }
+    text = cached;
+  } else {
+    text = String(value);
+  }
+  if (text.length > PREVIEW_MAX_CHARS) {
+    return { text: `${text.slice(0, PREVIEW_MAX_CHARS)}…`, expandable: true };
+  }
+  if (text.includes("\n")) expandable = true;
+  return { text, expandable };
+}
+
 // Grid cells only ever show a truncated preview (the expand dialog reads the
 // untruncated value from formatExpandedCellValue), so large text/json/bytea
 // columns don't blow up the DOM across hundreds of rows and crash the tab.

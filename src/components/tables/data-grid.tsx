@@ -23,6 +23,7 @@ import {
   RefreshCw,
   Trash2,
   X,
+  KeyRound,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import toast from "react-hot-toast";
@@ -32,9 +33,14 @@ import {
   exportToCsv,
   formatCellValue,
   formatExpandedCellValue,
-  truncateForGrid,
+  previewCellValue,
 } from "@/lib/utils";
-import type { ColumnInfo, PaginatedData, TableSchema } from "@/types/database";
+import type {
+  ColumnInfo,
+  PaginatedData,
+  TableFilter,
+  TableSchema,
+} from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -50,7 +56,17 @@ import {
 import { RowForm } from "@/components/forms/row-form";
 import { JsonEditor } from "@/components/forms/json-editor";
 import { useConnection } from "@/hooks/use-connection";
+import {
+  ensureView,
+  getView,
+  isDefaultState,
+  stateEquals,
+  tableKey,
+} from "@/lib/view-store";
+import { FilterPanel } from "@/components/tables/filter-panel";
+import { filtersEqual, isFilterActive, sanitizeFilters } from "@/lib/filters";
 
+const MAX_DISPLAY_CHARS = 100_000;
 const PAGE_SIZES = [10, 50, 100, 500] as const;
 
 function getRowKey(
@@ -88,24 +104,38 @@ function cellEditValue(value: unknown, column?: ColumnInfo): string {
 interface DataGridProps {
   tableName: string;
   schema: string;
+  /** View selected in the sidebar (null = the table's default view). */
+  viewId: string | null;
+  onViewChange: (viewId: string | null) => void;
 }
 
-export function DataGrid({ tableName, schema }: DataGridProps) {
+export function DataGrid({
+  tableName,
+  schema,
+  viewId,
+  onViewChange,
+}: DataGridProps) {
   const queryClient = useQueryClient();
   const { session } = useConnection();
-  const readOnly = session?.readOnly ?? false;
+  const viewScope = `${session?.host ?? ""}:${session?.database ?? ""}`;
+  const viewKey = tableKey(schema, tableName);
+  const [initialView] = useState(() => getView(viewScope, viewKey, viewId));
 
   const [page, setPage] = useState(1);
   const [pageInput, setPageInput] = useState("1");
   const [pageSize, setPageSize] = useState<number>(50);
-  const [sortColumn, setSortColumn] = useState<string | undefined>();
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [filterField, setFilterField] = useState("");
-  const [filterValue, setFilterValue] = useState("");
-  const [appliedFilter, setAppliedFilter] = useState<{
-    field: string;
-    value: string;
-  } | null>(null);
+  const [sortColumn, setSortColumn] = useState<string | undefined>(
+    initialView?.sortColumn
+  );
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">(
+    initialView?.sortDirection ?? "asc"
+  );
+  const [draftFilters, setDraftFilters] = useState<TableFilter[]>(
+    initialView?.filters ?? []
+  );
+  const [appliedFilters, setAppliedFilters] = useState<TableFilter[]>(
+    initialView?.filters ?? []
+  );
   const [selectedRows, setSelectedRows] = useState<Record<string, unknown>[]>([]);
   const [editRow, setEditRow] = useState<Record<string, unknown> | null>(null);
   const [pendingEdits, setPendingEdits] = useState<Record<string, PendingRowEdit>>({});
@@ -138,7 +168,21 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
       ),
   });
 
+  const tableSchemaColumns = useMemo(
+    () => schemaQuery.data?.schema.columns.map((c: ColumnInfo) => c.name) ?? [],
+    [schemaQuery.data]
+  );
+  // Only ever send filters that exist on this table; anything stale (old view,
+  // other database, dropped column) is dropped instead of reaching the server.
+  const effectiveFilters = useMemo(
+    () => sanitizeFilters(appliedFilters, tableSchemaColumns),
+    [appliedFilters, tableSchemaColumns]
+  );
+  const filtersKey = JSON.stringify(effectiveFilters);
+
   const dataQuery = useQuery<PaginatedData>({
+    enabled: schemaQuery.isSuccess,
+    retry: false,
     queryKey: [
       "data",
       schema,
@@ -147,8 +191,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
       pageSize,
       sortColumn,
       sortDirection,
-      appliedFilter?.field,
-      appliedFilter?.value,
+      filtersKey,
     ],
     queryFn: () => {
       const params = new URLSearchParams({
@@ -158,9 +201,8 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         sortDirection,
       });
       if (sortColumn) params.set("sortColumn", sortColumn);
-      if (appliedFilter?.field && appliedFilter.value) {
-        params.set("filterColumn", appliedFilter.field);
-        params.set("filterValue", appliedFilter.value);
+      if (effectiveFilters.length > 0) {
+        params.set("filters", JSON.stringify(effectiveFilters));
       }
       return apiFetch<PaginatedData>(
         `api/tables/${encodeURIComponent(tableName)}/data?${params}`
@@ -464,7 +506,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         header: () => (
           <button
             type="button"
-            className="flex items-center gap-1 font-medium text-foreground/80 hover:text-primary"
+            className="flex items-center gap-1.5 font-medium text-foreground hover:text-primary"
             onClick={() => {
               if (sortColumn === col) {
                 setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
@@ -475,7 +517,15 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
               setPage(1);
             }}
           >
+            {primaryKeys.includes(col) && (
+              <KeyRound className="h-3 w-3 shrink-0 text-primary" aria-label="Primary key" />
+            )}
             {col}
+            {getColumnMeta(col)?.udtName && (
+              <span className="font-mono text-[10px] font-normal text-muted">
+                {getColumnMeta(col)?.udtName}
+              </span>
+            )}
             {sortColumn === col ? (
               sortDirection === "asc" ? (
                 <ArrowUp className="h-3 w-3 text-primary" />
@@ -493,17 +543,15 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
           const columnMeta = getColumnMeta(col);
           const rowKey = getRowKey(row.original, primaryKeys, cols);
           const isModified = pendingEdits[rowKey]?.changes[col] !== undefined;
-          const editValue =
-            pendingEdits[rowKey]?.changes[col] ??
-            cellEditValue(v, columnMeta);
-          const display = truncateForGrid(
-            isModified ? editValue || "NULL" : formatCellValue(v)
-          );
-          const expanded = formatExpandedCellValue(v);
-          const canPreview =
-            expanded.mode === "json" ||
-            expanded.text.includes("\n") ||
-            expanded.text.length > 120;
+          const pendingValue = pendingEdits[rowKey]?.changes[col];
+          const getEditValue = () => pendingValue ?? cellEditValue(v, columnMeta);
+          // Cells only ever render a short preview of the value; the full
+          // content is built lazily when the cell dialog is opened.
+          const preview = isModified
+            ? previewCellValue(pendingValue || null)
+            : previewCellValue(v);
+          const display = preview.text;
+          const canPreview = preview.expandable;
 
           return (
             <div className="group flex max-w-[280px] items-start gap-1">
@@ -511,7 +559,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
                 role="button"
                 tabIndex={0}
                 className={`min-w-0 flex-1 truncate text-left ${
-                  readOnly || isPk ? "cursor-default" : "cursor-text"
+                  isPk ? "cursor-default" : "cursor-text"
                 } ${
                   isModified
                     ? "rounded bg-amber-500/10 px-1 ring-1 ring-inset ring-amber-500/40"
@@ -525,9 +573,9 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
                     columnId: col,
                     value: v,
                     cols,
-                    editable: !readOnly && !isPk,
+                    editable: !isPk,
                   });
-                  setCellDialogValue(editValue);
+                  setCellDialogValue(getEditValue());
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -538,9 +586,9 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
                       columnId: col,
                       value: v,
                       cols,
-                      editable: !readOnly && !isPk,
+                      editable: !isPk,
                     });
-                    setCellDialogValue(editValue);
+                    setCellDialogValue(getEditValue());
                   }
                 }}
               >
@@ -560,9 +608,9 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
                       columnId: col,
                       value: v,
                       cols,
-                      editable: !readOnly && !isPk,
+                      editable: !isPk,
                     });
-                    setCellDialogValue(editValue);
+                    setCellDialogValue(getEditValue());
                   }}
                   title={`Open ${col} value`}
                   aria-label={`Open ${col} value`}
@@ -574,31 +622,26 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
           );
         },
       })),
-      ...(!readOnly
-        ? [
-            {
-              id: "actions",
-              header: "",
-              cell: ({ row }: { row: { original: Record<string, unknown> } }) => (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setEditRow(row.original)}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              ),
-              size: 48,
-            } as ColumnDef<Record<string, unknown>>,
-          ]
-        : []),
+      {
+        id: "actions",
+        header: "",
+        cell: ({ row }: { row: { original: Record<string, unknown> } }) => (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setEditRow(row.original)}
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+        ),
+        size: 48,
+      } as ColumnDef<Record<string, unknown>>,
     ];
   }, [
     dataQuery.data,
     sortColumn,
     sortDirection,
     selectedRows,
-    readOnly,
     primaryKeys,
     allSelected,
     rows,
@@ -708,7 +751,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
     pageSize,
     sortColumn,
     sortDirection,
-    appliedFilter,
+    filtersKey,
     tableName,
     schema,
     cancelAllPendingEdits,
@@ -725,50 +768,75 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
     setPageInput(String(nextPage));
   };
 
-  const applyFilter = () => {
-    const value = filterValue.trim();
-    if (!filterField || !value) {
-      toast.error("Choose a field and enter a value to filter");
-      return;
-    }
-    setAppliedFilter({ field: filterField, value });
+  const applyFilters = () => {
+    setAppliedFilters(draftFilters.filter(isFilterActive));
+    setDraftFilters((d) => d.filter(isFilterActive));
     setPage(1);
   };
 
-  const clearFilter = () => {
-    setFilterField("");
-    setFilterValue("");
-    setAppliedFilter(null);
+  const clearFilters = () => {
+    setDraftFilters([]);
+    setAppliedFilters([]);
     setPage(1);
   };
+
+  // Sidebar selected a different view (or the plain table): load its state.
+  useEffect(() => {
+    const view = getView(viewScope, viewKey, viewId);
+    const target = {
+      filters: view?.filters ?? [],
+      sortColumn: view?.sortColumn,
+      sortDirection: view?.sortDirection,
+    };
+    const current = { filters: appliedFilters, sortColumn, sortDirection };
+    if (stateEquals(current, target)) return;
+    setAppliedFilters(target.filters);
+    setDraftFilters(target.filters);
+    setSortColumn(target.sortColumn);
+    setSortDirection(target.sortDirection ?? "asc");
+    setPage(1);
+    // Only react to the selection changing, not to our own state updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewId]);
+
+  // Any sort/filter the user applies becomes a view automatically (shown under
+  // the table in the sidebar); going back to the default state clears it.
+  useEffect(() => {
+    const state = { filters: appliedFilters, sortColumn, sortDirection };
+    if (isDefaultState(state)) {
+      if (viewId !== null) onViewChange(null);
+      return;
+    }
+    const view = ensureView(viewScope, viewKey, state);
+    if (view.id !== viewId) onViewChange(view.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appliedFilters, sortColumn, sortDirection]);
 
   return (
     <div className="flex h-full flex-col">
-      <div className="shrink-0 border-b border-border bg-card">
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+      <div className="shrink-0 border-b border-border bg-background">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2">
           <button
             type="button"
             className="studio-toolbar-btn"
-            data-active={filtersOpen || !!appliedFilter}
+            data-active={filtersOpen || appliedFilters.length > 0}
             onClick={() => setFiltersOpen((o) => !o)}
           >
             <Filter className="h-3.5 w-3.5" />
             Filters
-            {appliedFilter ? (
-              <span className="max-w-32 truncate text-primary">
-                ({appliedFilter.field} = {appliedFilter.value})
+            {appliedFilters.length > 0 ? (
+              <span className="rounded-full bg-primary-muted px-1.5 text-[11px] tabular-nums text-primary">
+                {appliedFilters.length}
               </span>
             ) : null}
           </button>
 
-          {!readOnly && (
-            <Button size="sm" onClick={() => setInsertOpen(true)}>
-              <Plus className="h-3.5 w-3.5" />
-              Add record
-            </Button>
-          )}
+          <Button size="sm" onClick={() => setInsertOpen(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            Add record
+          </Button>
 
-          {!readOnly && selectedRows.length > 0 && (
+          {selectedRows.length > 0 && (
             <Button
               variant="destructive"
               size="sm"
@@ -802,7 +870,7 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
                 setPageSize(Number(e.target.value));
                 setPage(1);
               }}
-              className="h-7 w-18 shrink-0 rounded-md border border-border bg-surface px-1.5 text-center text-xs tabular-nums text-foreground outline-none focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary/30"
+              className="h-7 w-18 shrink-0 rounded-md border border-border bg-transparent px-1.5 text-center text-xs tabular-nums text-foreground outline-none focus-visible:border-primary-fill focus-visible:ring-2 focus-visible:ring-primary-fill/25"
               aria-label="Rows per page"
               title="Rows per page"
             >
@@ -859,38 +927,19 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         </div>
 
         {filtersOpen && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
-            <Select
-              value={filterField}
-              onChange={(e) => setFilterField(e.target.value)}
-              className="h-8 w-44 text-xs"
-              aria-label="Filter field"
-            >
-              <option value="" disabled>
-                Select field
-              </option>
-              {(tableSchema?.columns ?? []).map((c: ColumnInfo) => (
-                <option key={c.name} value={c.name}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-            <Input
-              placeholder="Value"
-              value={filterValue}
-              onChange={(e) => setFilterValue(e.target.value)}
-              className="h-8 w-48 text-xs"
-              onKeyDown={(e) => e.key === "Enter" && applyFilter()}
-            />
-            <Button variant="secondary" size="sm" onClick={applyFilter}>
-              Apply
-            </Button>
-            {appliedFilter ? (
-              <Button variant="ghost" size="sm" onClick={clearFilter}>
-                Clear
-              </Button>
-            ) : null}
-          </div>
+          <FilterPanel
+            columns={tableSchemaColumns}
+            filters={draftFilters}
+            onChange={setDraftFilters}
+            onApply={applyFilters}
+            onClear={clearFilters}
+            dirty={
+              !filtersEqual(
+                draftFilters.filter(isFilterActive),
+                appliedFilters
+              ) || draftFilters.length !== draftFilters.filter(isFilterActive).length
+            }
+          />
         )}
       </div>
 
@@ -917,13 +966,31 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
           <tbody>
             {dataQuery.isLoading ? (
               <tr>
-                <td colSpan={columns.length} className="p-12 text-center text-zinc-500">
+                <td colSpan={columns.length} className="p-12 text-center text-muted-foreground">
                   Loading…
+                </td>
+              </tr>
+            ) : dataQuery.isError ? (
+              <tr>
+                <td colSpan={columns.length} className="p-12 text-center">
+                  <p className="text-sm text-destructive">
+                    {dataQuery.error instanceof Error
+                      ? dataQuery.error.message
+                      : "Failed to load rows"}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => dataQuery.refetch()}
+                  >
+                    Retry
+                  </Button>
                 </td>
               </tr>
             ) : table.getRowModel().rows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="p-12 text-center text-zinc-500">
+                <td colSpan={columns.length} className="p-12 text-center text-muted-foreground">
                   No rows
                 </td>
               </tr>
@@ -948,8 +1015,8 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
         </table>
       </div>
 
-      {pendingChangeCount > 0 && !readOnly && (
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-card px-4 py-2.5">
+      {pendingChangeCount > 0 && (
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-surface px-4 py-2.5">
           <span className="text-sm text-muted-foreground">
             {pendingChangeCount} unsaved change{pendingChangeCount === 1 ? "" : "s"}
           </span>
@@ -965,7 +1032,6 @@ export function DataGrid({ tableName, schema }: DataGridProps) {
             </Button>
             <Button
               size="sm"
-              className="bg-emerald-600 text-white hover:bg-emerald-700"
               onClick={() => void savePendingEdits()}
               disabled={savingEdits}
             >
@@ -1164,7 +1230,9 @@ function CellEditorDialog({
           )
         ) : (
           <pre className="min-h-full overflow-auto rounded-lg border border-border bg-surface p-4 font-mono text-xs leading-6 whitespace-pre-wrap wrap-break-word text-foreground">
-            {expanded.text}
+            {expanded.text.length > MAX_DISPLAY_CHARS
+              ? `${expanded.text.slice(0, MAX_DISPLAY_CHARS)}\n\n… showing first ${MAX_DISPLAY_CHARS.toLocaleString()} of ${expanded.text.length.toLocaleString()} characters`
+              : expanded.text}
           </pre>
         )}
       </div>

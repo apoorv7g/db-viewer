@@ -7,6 +7,7 @@ import { SchemaViewer } from "@/components/tables/schema-viewer";
 import { SqlConsole } from "@/components/sql-console/sql-editor";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useConnection } from "@/hooks/use-connection";
 import {
@@ -39,13 +40,13 @@ export default function DashboardPage() {
           <ThemeToggle />
         </div>
         <div className="pointer-events-none absolute inset-0" aria-hidden>
-          <div className="absolute -top-40 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-primary opacity-[0.06] blur-3xl" />
+          <div className="absolute -top-48 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-primary-fill opacity-[0.07] blur-3xl" />
         </div>
         <div className="relative mb-10 max-w-md text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-muted ring-1 ring-primary/20">
-            <Database className="h-7 w-7 text-primary" />
+          <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-fill">
+            <Database className="h-6 w-6 text-primary-foreground" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
             DB Viewer
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
@@ -61,7 +62,12 @@ export default function DashboardPage() {
   // Remounting on connection/database change gives switching a database the
   // same fresh-start UI as connecting for the first time (cleared selection,
   // reset tabs, no stale component state carried over).
-  return <DashboardContent key={`${session?.id}:${session?.database}`} />;
+  const sessionKey = `${session?.id}:${session?.database}`;
+  return (
+    <ErrorBoundary key={sessionKey}>
+      <DashboardContent />
+    </ErrorBoundary>
+  );
 }
 
 function DashboardContent() {
@@ -69,6 +75,7 @@ function DashboardContent() {
     schema: string;
     name: string;
   } | null>(null);
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("data");
   const [sqlOnly, setSqlOnly] = useState(false);
 
@@ -81,9 +88,10 @@ function DashboardContent() {
     <DashboardShell
       sidebar={
         <SidebarNav
-          selected={selectedTable}
-          onSelectTable={(t) => {
+          selected={selectedTable && { ...selectedTable, viewId: activeViewId }}
+          onSelectTable={(t, viewId = null) => {
             setSelectedTable(t);
+            setActiveViewId(viewId);
             setSqlOnly(false);
             setActiveTab("data");
           }}
@@ -91,6 +99,7 @@ function DashboardContent() {
           onOpenSql={() => {
             setSqlOnly(true);
             setSelectedTable(null);
+            setActiveViewId(null);
             setActiveTab("sql");
           }}
         />
@@ -98,12 +107,12 @@ function DashboardContent() {
     >
       {selectedTable ? (
         <div className="flex h-full min-h-0 flex-col">
-          <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-card px-3 py-2 sm:flex-row sm:items-center">
-            <div className="flex min-w-0 items-center gap-2">
-              <Table2 className="h-4 w-4 shrink-0 text-primary" />
-              <span className="truncate text-sm font-medium">{tableLabel}</span>
+          <div className="flex shrink-0 flex-col gap-0 border-b border-border bg-background px-4 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 items-center gap-2 py-2.5 sm:mr-6">
+              <Table2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="truncate text-sm font-semibold">{tableLabel}</span>
             </div>
-            <nav className="flex gap-0.5 overflow-x-auto sm:ml-auto">
+            <nav className="-mb-px flex gap-1 overflow-x-auto">
               {(
                 [
                   { id: "data" as const, label: "Data", icon: Rows3 },
@@ -130,6 +139,9 @@ function DashboardContent() {
           <div className="min-h-0 flex-1">
             {activeTab === "data" && (
               <DataGrid
+                key={`${selectedTable.schema}.${selectedTable.name}`}
+                viewId={activeViewId}
+                onViewChange={setActiveViewId}
                 tableName={selectedTable.name}
                 schema={selectedTable.schema}
               />
@@ -151,9 +163,9 @@ function DashboardContent() {
         </div>
       ) : (
         <div className="flex h-full min-h-0 flex-col">
-          <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-4 py-2.5">
-            <Terminal className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">SQL runner</span>
+          <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border bg-background px-4">
+            <Terminal className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-semibold">SQL Editor</span>
             <span className="hidden text-xs text-muted-foreground sm:inline">
               Run queries against your database
             </span>

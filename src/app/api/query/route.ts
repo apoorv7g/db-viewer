@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import {
-  assertWritable,
   getConnectionId,
   getPoolEntry,
   query,
@@ -41,10 +40,6 @@ export async function POST(request: Request) {
     }
 
     const readOnly = isReadOnlyQuery(sql);
-    if (!readOnly) {
-      assertWritable(entry.session);
-    }
-
     const start = performance.now();
     let rows: Record<string, unknown>[];
     let fields: { name: string; dataTypeID: number }[];

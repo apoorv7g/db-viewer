@@ -16,7 +16,7 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
-        className="fixed inset-0 bg-black/50"
+        className="fixed inset-0 bg-black/60 backdrop-blur-[2px]"
         onClick={() => onOpenChange(false)}
       />
       <div className="relative z-50">{children}</div>
@@ -36,7 +36,7 @@ export function DialogContent({
   return (
     <div
       className={cn(
-        "w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-xl shadow-black/40 mx-4",
+        "w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-2xl shadow-black/50 mx-4",
         className
       )}
     >
@@ -76,7 +76,7 @@ export function DialogDescription({
   ...props
 }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
-    <p className={cn("text-sm text-zinc-500 dark:text-zinc-400", className)} {...props} />
+    <p className={cn("text-sm text-muted-foreground", className)} {...props} />
   );
 }
 

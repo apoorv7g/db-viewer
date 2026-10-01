@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 
 const SIDEBAR_WIDTH_KEY = "db-viewer-sidebar-width";
-const DEFAULT_SIDEBAR_WIDTH = 224;
+const DEFAULT_SIDEBAR_WIDTH = 256;
 const MIN_SIDEBAR_WIDTH = 180;
 const MAX_SIDEBAR_WIDTH = 480;
 
@@ -81,7 +81,7 @@ export function DashboardShell({ sidebar, children }: DashboardShellProps) {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border bg-sidebar px-3">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-sidebar px-3">
         <Button
           variant="ghost"
           size="icon"
@@ -93,13 +93,13 @@ export function DashboardShell({ sidebar, children }: DashboardShellProps) {
         </Button>
 
         <div className="flex min-w-0 items-center gap-2">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-primary-muted">
-            <Database className="h-3.5 w-3.5 text-primary" />
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary-fill">
+            <Database className="h-3.5 w-3.5 text-primary-foreground" />
           </div>
-          <span className="truncate text-sm font-semibold">DB Viewer</span>
+          <span className="hidden truncate text-sm font-semibold sm:inline">DB Viewer</span>
         </div>
 
-        <div className="mx-1 hidden h-4 w-px bg-border sm:block" />
+        <span className="hidden select-none text-lg font-light text-border sm:block" aria-hidden>/</span>
 
         <div className="min-w-0 flex-1">
           <ConnectionStatus compact />
@@ -120,7 +120,7 @@ export function DashboardShell({ sidebar, children }: DashboardShellProps) {
 
         <aside
           className={cn(
-            "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-sidebar pt-11 transition-transform duration-200 lg:static lg:relative lg:pt-0 lg:translate-x-0",
+            "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-sidebar pt-12 transition-transform duration-200 lg:static lg:relative lg:pt-0 lg:translate-x-0",
             sidebarOpen ? "translate-x-0" : "-translate-x-full",
             isResizing && "select-none"
           )}

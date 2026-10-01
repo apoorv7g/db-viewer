@@ -11,7 +11,6 @@ export const connectionSchema = z.object({
       message:
         "Invalid PostgreSQL URI. Expected: postgresql://user:pass@host:port/database",
     }),
-  readOnly: z.boolean(),
   queryTimeoutMs: z.number().min(1000).max(120000),
   resultLimit: z.number().min(1).max(10000),
 });
@@ -38,6 +37,42 @@ export const querySchema = z.object({
 
 const PAGE_SIZES = [10, 50, 100, 500] as const;
 
+export const FILTER_OPERATORS = [
+  "contains",
+  "not_contains",
+  "equals",
+  "not_equals",
+  "starts_with",
+  "ends_with",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "is_null",
+  "is_not_null",
+] as const;
+
+export const tableFilterSchema = z.object({
+  field: z.string().min(1),
+  op: z.enum(FILTER_OPERATORS),
+  value: z.string().max(1000).optional().default(""),
+});
+
+const filtersParamSchema = z
+  .string()
+  .optional()
+  .transform((raw, ctx) => {
+    if (!raw) return [];
+    try {
+      const parsed = z.array(tableFilterSchema).max(20).safeParse(JSON.parse(raw));
+      if (parsed.success) return parsed.data;
+    } catch {
+      // fall through
+    }
+    ctx.addIssue({ code: "custom", message: "Invalid filters" });
+    return z.NEVER;
+  });
+
 export const tableDataQuerySchema = z.object({
   page: z.coerce.number().min(1).optional().default(1),
   pageSize: z.coerce
@@ -49,8 +84,7 @@ export const tableDataQuerySchema = z.object({
     .default(50),
   sortColumn: z.string().optional(),
   sortDirection: z.enum(["asc", "desc"]).optional().default("asc"),
-  filterColumn: z.string().optional(),
-  filterValue: z.string().optional(),
+  filters: filtersParamSchema,
   schema: z.string().optional().default("public"),
 });
 

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import {
-  assertWritable,
   getConnectionId,
   getPoolEntry,
 } from "@/lib/database";
@@ -58,7 +57,6 @@ export async function POST(
   }
 
   try {
-    assertWritable(entry.session);
     const body = await request.json();
     const parsed = insertDataSchema.safeParse(body);
     if (!parsed.success) {
@@ -100,7 +98,6 @@ export async function PUT(
   }
 
   try {
-    assertWritable(entry.session);
     const body = await request.json();
     const parsed = updateDataSchema.safeParse(body);
     if (!parsed.success) {
@@ -143,7 +140,6 @@ export async function DELETE(
   }
 
   try {
-    assertWritable(entry.session);
     const body = await request.json();
     const parsed = deleteDataSchema.safeParse(body);
     if (!parsed.success) {

@@ -31,7 +31,7 @@ export function SchemaViewer({ tableName, schema }: SchemaViewerProps) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 py-8 text-sm text-zinc-500">
+      <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin text-primary" />
         Loading schema…
       </div>
@@ -54,10 +54,10 @@ export function SchemaViewer({ tableName, schema }: SchemaViewerProps) {
         <table className="studio-table w-full">
           <thead>
             <tr className="border-b border-border">
-              <th className="px-4 py-3">Column</th>
-              <th className="px-4 py-3">Type</th>
-              <th className="px-4 py-3">Nullable</th>
-              <th className="px-4 py-3">Default</th>
+              <th className="px-4">Column</th>
+              <th className="px-4">Type</th>
+              <th className="px-4">Nullable</th>
+              <th className="px-4">Default</th>
             </tr>
           </thead>
           <tbody>
@@ -66,8 +66,8 @@ export function SchemaViewer({ tableName, schema }: SchemaViewerProps) {
                 key={col.name}
                 className="border-b border-border-subtle"
               >
-                <td className="px-4 py-3">
-                  <span className="font-mono text-sm text-zinc-200">
+                <td className="px-4">
+                  <span className="font-mono text-[13px] text-foreground">
                     {col.name}
                   </span>
                   {col.isPrimaryKey && (
@@ -77,25 +77,25 @@ export function SchemaViewer({ tableName, schema }: SchemaViewerProps) {
                     </Badge>
                   )}
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-4">
                   <code className="rounded bg-surface px-1.5 py-0.5 text-xs text-primary">
                     {col.udtName}
                   </code>
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-4">
                   {col.isNullable ? (
-                    <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                       <Check className="h-3.5 w-3.5" />
                       Yes
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-xs text-zinc-500">
+                    <span className="inline-flex items-center gap-1 text-xs text-muted">
                       <X className="h-3.5 w-3.5" />
                       No
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3 font-mono text-xs text-zinc-500 max-w-xs truncate">
+                <td className="px-4 font-mono text-xs text-muted max-w-xs truncate">
                   {col.columnDefault ?? "-"}
                 </td>
               </tr>

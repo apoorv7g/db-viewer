@@ -4,7 +4,13 @@ import {
   qualifiedTable,
   withClient,
 } from "@/lib/database";
-import type { ColumnInfo, PaginatedData, TableInfo, TableSchema } from "@/types/database";
+import type {
+  ColumnInfo,
+  PaginatedData,
+  TableFilter,
+  TableInfo,
+  TableSchema,
+} from "@/types/database";
 
 export async function listTables(
   connectionId: string,
@@ -97,8 +103,7 @@ export async function getTableData(
     pageSize?: number;
     sortColumn?: string;
     sortDirection?: "asc" | "desc";
-    filterColumn?: string;
-    filterValue?: string;
+    filters?: TableFilter[];
   }
 ): Promise<PaginatedData> {
   const schema = options.schema ?? "public";
@@ -113,17 +118,57 @@ export async function getTableData(
   const params: unknown[] = [];
   let paramIndex = 1;
 
-  if (options.filterColumn && options.filterValue !== undefined) {
-    const filterText = options.filterValue.trim();
-    if (filterText) {
-      if (!columnNames.includes(options.filterColumn)) {
-        throw new Error("Invalid filter column");
+  for (const filter of options.filters ?? []) {
+    if (!columnNames.includes(filter.field)) {
+      throw new Error(`Invalid filter column: ${filter.field}`);
+    }
+    const col = quoteIdent(filter.field);
+    const text = filter.value.trim();
+
+    if (filter.op === "is_null") {
+      conditions.push(`${col} IS NULL`);
+      continue;
+    }
+    if (filter.op === "is_not_null") {
+      conditions.push(`${col} IS NOT NULL`);
+      continue;
+    }
+    if (text === "") continue;
+
+    // Escape LIKE wildcards so user text is matched literally.
+    const like = text.replace(/[\\%_]/g, "\\$&");
+    const n = paramIndex++;
+    switch (filter.op) {
+      case "contains":
+        conditions.push(`${col}::text ILIKE $${n}`);
+        params.push(`%${like}%`);
+        break;
+      case "not_contains":
+        conditions.push(`(${col} IS NULL OR ${col}::text NOT ILIKE $${n})`);
+        params.push(`%${like}%`);
+        break;
+      case "starts_with":
+        conditions.push(`${col}::text ILIKE $${n}`);
+        params.push(`${like}%`);
+        break;
+      case "ends_with":
+        conditions.push(`${col}::text ILIKE $${n}`);
+        params.push(`%${like}`);
+        break;
+      case "equals":
+        conditions.push(`${col}::text = $${n}`);
+        params.push(text);
+        break;
+      case "not_equals":
+        conditions.push(`(${col} IS NULL OR ${col}::text <> $${n})`);
+        params.push(text);
+        break;
+      default: {
+        const sqlOp = { gt: ">", gte: ">=", lt: "<", lte: "<=" }[filter.op];
+        // Compare with the column's own type so numbers/dates order correctly.
+        conditions.push(`${col} ${sqlOp} $${n}`);
+        params.push(text);
       }
-      conditions.push(
-        `${quoteIdent(options.filterColumn)}::text ILIKE $${paramIndex}`
-      );
-      params.push(`%${filterText}%`);
-      paramIndex++;
     }
   }
 

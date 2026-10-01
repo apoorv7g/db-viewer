@@ -46,7 +46,7 @@ export function DatabaseSwitcher() {
     <div className="relative" ref={containerRef}>
       <button
         type="button"
-        className="flex min-w-0 items-center gap-1 rounded px-1 py-0.5 font-medium text-foreground transition-colors hover:bg-surface-hover disabled:pointer-events-none disabled:opacity-60"
+        className="flex min-w-0 items-center gap-1 rounded-md border border-transparent px-1.5 py-1 text-[13px] font-medium text-foreground transition-colors hover:border-border hover:bg-surface disabled:pointer-events-none disabled:opacity-60"
         onClick={() => setOpen((o) => !o)}
         disabled={isSwitchingDatabase}
         aria-haspopup="listbox"
@@ -63,7 +63,7 @@ export function DatabaseSwitcher() {
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-60 mt-1 max-h-64 w-max min-w-64 max-w-96 overflow-y-auto rounded-lg border border-border bg-card p-1.5 shadow-xl shadow-black/10 dark:shadow-black/30">
+        <div className="absolute left-0 top-full z-60 mt-1 max-h-64 w-max min-w-64 max-w-96 overflow-y-auto rounded-lg border border-border bg-card p-1.5 shadow-2xl shadow-black/20 dark:shadow-black/60">
           <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             Switch database
           </p>

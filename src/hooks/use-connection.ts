@@ -25,7 +25,6 @@ export function useConnection() {
   const connectMutation = useMutation({
     mutationFn: (input: {
       uri: string;
-      readOnly?: boolean;
       queryTimeoutMs?: number;
       resultLimit?: number;
     }) =>
@@ -45,11 +44,17 @@ export function useConnection() {
   });
 
   const switchDatabaseMutation = useMutation({
-    mutationFn: (database: string) =>
-      apiFetch<{ session: ConnectionSession }>("api/connect/switch", {
+    mutationFn: async (database: string) => {
+      // Stop table/schema/row requests for the old database before the server
+      // swaps (and ends) its pool, so nothing is in flight against it.
+      await queryClient.cancelQueries({
+        predicate: (query) => query.queryKey[0] !== "connection",
+      });
+      return apiFetch<{ session: ConnectionSession }>("api/connect/switch", {
         method: "POST",
         body: JSON.stringify({ database }),
-      }),
+      });
+    },
     onSuccess: (data) => {
       // Update the session first, and as its own synchronous cache write,
       // so the UI (which remounts on session identity) reacts immediately

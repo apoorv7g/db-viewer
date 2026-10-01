@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DatabaseSwitcher } from "@/components/database/database-switcher";
 import { useConnection } from "@/hooks/use-connection";
-import { LogOut, Shield, Circle } from "lucide-react";
+import { LogOut, Circle } from "lucide-react";
 
 interface ConnectionStatusProps {
   compact?: boolean;
@@ -18,18 +18,12 @@ export function ConnectionStatus({ compact }: ConnectionStatusProps) {
   if (compact) {
     return (
       <div className="flex min-w-0 items-center gap-2 text-xs sm:text-sm">
-        <Circle className="h-2 w-2 shrink-0 fill-primary text-primary" />
-        <span className="flex min-w-0 items-center text-muted-foreground">
+        <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+          <span className="truncate" title={session.host}>{session.host}</span>
+          <span className="shrink-0 select-none text-lg font-light text-border" aria-hidden>/</span>
           <DatabaseSwitcher />
-          <span className="mx-1 shrink-0 opacity-50">@</span>
-          <span className="truncate">{session.host}</span>
+          <Circle className="ml-1 h-1.5 w-1.5 shrink-0 fill-primary-fill text-primary-fill" aria-label="Connected" />
         </span>
-        {session.readOnly && (
-          <Badge variant="warning" className="hidden shrink-0 gap-1 sm:inline-flex">
-            <Shield className="h-3 w-3" />
-            Read-only
-          </Badge>
-        )}
         <Button
           variant="ghost"
           size="sm"
@@ -45,7 +39,7 @@ export function ConnectionStatus({ compact }: ConnectionStatusProps) {
 
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-border bg-sidebar px-4 py-2">
-      <Circle className="h-2 w-2 fill-primary text-primary" />
+      <Circle className="h-2 w-2 fill-primary-fill text-primary-fill" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium" title={session.database}>
           {session.database}
@@ -55,12 +49,6 @@ export function ConnectionStatus({ compact }: ConnectionStatusProps) {
           </span>
         </p>
       </div>
-      {session.readOnly && (
-        <Badge variant="warning" className="gap-1">
-          <Shield className="h-3 w-3" />
-          Read-only
-        </Badge>
-      )}
       <Badge variant="success">Connected</Badge>
       <Button variant="ghost" size="sm" onClick={() => disconnect()}>
         <LogOut className="h-4 w-4" />

@@ -43,7 +43,7 @@ export function ConfirmationModal({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         {preview !== undefined && (
-          <pre className="max-h-48 overflow-auto rounded-md bg-surface border border-border p-3 text-xs text-zinc-400">
+          <pre className="max-h-48 overflow-auto rounded-md bg-surface border border-border p-3 text-xs text-muted-foreground">
             {JSON.stringify(preview, null, 2)}
           </pre>
         )}

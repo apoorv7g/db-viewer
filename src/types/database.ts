@@ -1,6 +1,5 @@
 export interface ConnectionConfig {
   uri: string;
-  readOnly?: boolean;
   queryTimeoutMs?: number;
   resultLimit?: number;
 }
@@ -9,7 +8,6 @@ export interface ConnectionSession {
   id: string;
   database: string;
   host: string;
-  readOnly: boolean;
   queryTimeoutMs: number;
   resultLimit: number;
   connectedAt: number;
@@ -69,3 +67,32 @@ export interface SqlSafetyAnalysis {
 }
 
 export type DataOperation = "insert" | "update" | "delete";
+
+export type FilterOperator =
+  | "contains"
+  | "not_contains"
+  | "equals"
+  | "not_equals"
+  | "starts_with"
+  | "ends_with"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "is_null"
+  | "is_not_null";
+
+export interface TableFilter {
+  field: string;
+  op: FilterOperator;
+  value: string;
+}
+
+/** A saved, named combination of filters and sort for one table. */
+export interface TableView {
+  id: string;
+  name: string;
+  filters: TableFilter[];
+  sortColumn?: string;
+  sortDirection?: "asc" | "desc";
+}

@@ -16,6 +16,17 @@ interface PoolEntry {
 
 const pools = new Map<string, PoolEntry>();
 
+// pg emits "error" on the pool when an idle client's socket dies (e.g. while a
+// pool is being ended during a database switch, or the server drops a
+// connection). With no listener Node treats it as an uncaught exception and
+// takes the whole server down.
+function attachPoolErrorHandler(pool: Pool) {
+  pool.on("error", (err) => {
+    console.error("[db-viewer] idle pool client error:", err.message);
+  });
+  return pool;
+}
+
 function parseUri(uri: string): { host: string; database: string } {
   const url = new URL(uri);
   return {
@@ -73,27 +84,25 @@ export async function createConnection(
   }
 
   const { host, database } = parseUri(config.uri);
-  const readOnly = config.readOnly ?? false;
   const queryTimeoutMs = config.queryTimeoutMs ?? 30000;
   const resultLimit = config.resultLimit ?? 1000;
 
-  const pool = new Pool({
-    connectionString: stripSslMode(config.uri),
-    ssl: resolveSsl(config.uri),
-    max: POOL_MAX_CONNECTIONS,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-    statement_timeout: queryTimeoutMs,
-    query_timeout: queryTimeoutMs,
-    application_name: "db-viewer",
-  });
+  const pool = attachPoolErrorHandler(
+    new Pool({
+      connectionString: stripSslMode(config.uri),
+      ssl: resolveSsl(config.uri),
+      max: POOL_MAX_CONNECTIONS,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+      statement_timeout: queryTimeoutMs,
+      query_timeout: queryTimeoutMs,
+      application_name: "db-viewer",
+    })
+  );
 
   const client = await pool.connect();
   try {
     await client.query("SELECT 1");
-    if (readOnly) {
-      await client.query("SET default_transaction_read_only = on");
-    }
   } finally {
     client.release();
   }
@@ -103,7 +112,6 @@ export async function createConnection(
     id,
     database,
     host,
-    readOnly,
     queryTimeoutMs,
     resultLimit,
     connectedAt: Date.now(),
@@ -120,6 +128,7 @@ export async function testConnection(uri: string): Promise<{ ok: boolean; error?
     max: 1,
     connectionTimeoutMillis: 10000,
   });
+  attachPoolErrorHandler(pool);
   try {
     const client = await pool.connect();
     try {
@@ -175,6 +184,7 @@ export async function listDatabases(uri: string): Promise<DatabaseInfo[]> {
     max: 1,
     connectionTimeoutMillis: 10000,
   });
+  attachPoolErrorHandler(pool);
   try {
     const client = await pool.connect();
     try {
@@ -217,24 +227,23 @@ export async function switchDatabase(
   const oldSession = entry.session;
   const targetUri = withDatabase(entry.uri, databaseName);
 
-  const pool = new Pool({
-    connectionString: stripSslMode(targetUri),
-    ssl: resolveSsl(targetUri),
-    max: POOL_MAX_CONNECTIONS,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-    statement_timeout: oldSession.queryTimeoutMs,
-    query_timeout: oldSession.queryTimeoutMs,
-    application_name: "db-viewer",
-  });
+  const pool = attachPoolErrorHandler(
+    new Pool({
+      connectionString: stripSslMode(targetUri),
+      ssl: resolveSsl(targetUri),
+      max: POOL_MAX_CONNECTIONS,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+      statement_timeout: oldSession.queryTimeoutMs,
+      query_timeout: oldSession.queryTimeoutMs,
+      application_name: "db-viewer",
+    })
+  );
 
   try {
     const client = await pool.connect();
     try {
       await client.query("SELECT 1");
-      if (oldSession.readOnly) {
-        await client.query("SET default_transaction_read_only = on");
-      }
     } finally {
       client.release();
     }
@@ -289,9 +298,6 @@ export async function withClient<T>(
   }
   const client = await entry.pool.connect();
   try {
-    if (entry.session.readOnly) {
-      await client.query("SET TRANSACTION READ ONLY");
-    }
     return await fn(client);
   } finally {
     client.release();
@@ -314,12 +320,6 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
       })),
     };
   });
-}
-
-export function assertWritable(session: ConnectionSession) {
-  if (session.readOnly) {
-    throw new Error("Connection is in read-only mode. Write operations are not allowed.");
-  }
 }
 
 export function quoteIdent(name: string): string {
