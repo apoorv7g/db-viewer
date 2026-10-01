@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { formatTypeName } from "@/lib/time";
 import { JsonEditor } from "./json-editor";
 import type { ColumnInfo } from "@/types/database";
 
@@ -118,7 +119,7 @@ export function RowForm({
               <div className="space-y-1">
                 <Label className="text-sm font-medium">{col.name}</Label>
                 <p className="text-xs text-muted-foreground">
-                  {col.udtName}
+                  {formatTypeName(col.udtName)}
                   {col.isNullable ? "" : " · required"}
                   {isPk ? " · primary key" : ""}
                 </p>

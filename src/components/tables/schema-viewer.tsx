@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api-client";
 import type { ColumnInfo, TableSchema } from "@/types/database";
+import { formatTypeName } from "@/lib/time";
 import { Badge } from "@/components/ui/badge";
 import {
   KeyRound,
@@ -79,7 +80,7 @@ export function SchemaViewer({ tableName, schema }: SchemaViewerProps) {
                 </td>
                 <td className="px-4">
                   <code className="rounded bg-surface px-1.5 py-0.5 text-xs text-primary">
-                    {col.udtName}
+                    {formatTypeName(col.udtName)}
                   </code>
                 </td>
                 <td className="px-4">

@@ -21,7 +21,6 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  Trash2,
   X,
   KeyRound,
 } from "lucide-react";
@@ -64,6 +63,8 @@ import {
   tableKey,
 } from "@/lib/view-store";
 import { FilterPanel } from "@/components/tables/filter-panel";
+import { TimeHover } from "@/components/tables/time-hover";
+import { formatTypeName, timeKindForColumn } from "@/lib/time";
 import { buildSelectSql } from "@/lib/filter-sql";
 import { filtersEqual, isFilterActive, sanitizeFilters } from "@/lib/filters";
 
@@ -145,7 +146,7 @@ export function DataGrid({
   const [cellDialog, setCellDialog] = useState<CellDialogState | null>(null);
   const [cellDialogValue, setCellDialogValue] = useState("");
   const [confirm, setConfirm] = useState<{
-    type: "update" | "batch-update" | "delete" | "insert";
+    type: "update" | "batch-update" | "insert";
     payload: unknown;
     message: string;
   } | null>(null);
@@ -524,7 +525,7 @@ export function DataGrid({
             {col}
             {getColumnMeta(col)?.udtName && (
               <span className="font-mono text-[10px] font-normal text-muted">
-                {getColumnMeta(col)?.udtName}
+                {formatTypeName(getColumnMeta(col)?.udtName ?? "")}
               </span>
             )}
             {sortColumn === col ? (
@@ -556,6 +557,7 @@ export function DataGrid({
 
           return (
             <div className="group flex max-w-[280px] items-start gap-1">
+              <TimeHover value={v} kind={timeKindForColumn(columnMeta)}>
               <div
                 role="button"
                 tabIndex={0}
@@ -566,7 +568,7 @@ export function DataGrid({
                     ? "rounded bg-amber-500/10 px-1 ring-1 ring-inset ring-amber-500/40"
                     : ""
                 } ${v === null && !isModified ? "italic text-muted-foreground" : "text-foreground/90"}`}
-                title={display}
+                title={timeKindForColumn(columnMeta) ? undefined : display}
                 onDoubleClick={() => {
                   setCellDialog({
                     row: row.original,
@@ -595,6 +597,7 @@ export function DataGrid({
               >
                 {display}
               </div>
+              </TimeHover>
               {canPreview ? (
                 <Button
                   type="button"
@@ -685,34 +688,6 @@ export function DataGrid({
     refresh();
   };
 
-  const handleDelete = async (confirmed = false) => {
-    if (selectedRows.length === 0) return;
-    if (primaryKeys.length === 0) {
-      toast.error("Table has no primary key. Cannot delete safely.");
-      return;
-    }
-    const whereList = selectedRows.map(buildWhere);
-    const res = await apiFetch<{
-      requiresConfirmation?: boolean;
-      deleted?: number;
-      message?: string;
-    }>(`api/tables/${encodeURIComponent(tableName)}/data`, {
-      method: "DELETE",
-      body: JSON.stringify({ where: whereList, schema, confirmed }),
-    });
-    if (res.requiresConfirmation) {
-      setConfirm({
-        type: "delete",
-        payload: { whereList },
-        message: res.message ?? "Confirm delete?",
-      });
-      return;
-    }
-    toast.success(`Deleted ${res.deleted} row(s)`);
-    setSelectedRows([]);
-    refresh();
-  };
-
   const handleConfirm = async () => {
     if (!confirm) return;
     if (confirm.type === "update") {
@@ -726,8 +701,6 @@ export function DataGrid({
     } else if (confirm.type === "insert") {
       const { values } = confirm.payload as { values: Record<string, unknown> };
       await handleInsert(values, true);
-    } else if (confirm.type === "delete") {
-      await handleDelete(true);
     }
     setConfirm(null);
   };
@@ -854,17 +827,6 @@ export function DataGrid({
             <Plus className="h-3.5 w-3.5" />
             Add record
           </Button>
-
-          {selectedRows.length > 0 && (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => handleDelete()}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Delete ({selectedRows.length})
-            </Button>
-          )}
 
           {selectedRows.length > 0 && (
             <>
@@ -1147,7 +1109,7 @@ export function DataGrid({
       <Dialog open={!!cellDialog} onOpenChange={(open) => !open && setCellDialog(null)}>
         <DialogContent
           onClose={() => setCellDialog(null)}
-          className="mx-4 max-h-[88vh] w-[min(92vw,1100px)] max-w-5xl overflow-hidden p-0"
+          className="mx-4 h-[90vh] w-[min(96vw,1400px)] max-w-none overflow-hidden p-0"
         >
           {cellDialog && (
             <CellEditorDialog
@@ -1190,7 +1152,7 @@ export function DataGrid({
         onOpenChange={(o) => !o && setConfirm(null)}
         title="Confirm action"
         description={confirm?.message ?? ""}
-        variant={confirm?.type === "delete" ? "destructive" : "default"}
+        variant="default"
         confirmLabel="Yes, proceed"
         onConfirm={handleConfirm}
         preview={confirm?.payload}
@@ -1239,7 +1201,7 @@ function CellEditorDialog({
   };
 
   return (
-    <div className="flex max-h-[88vh] flex-col">
+    <div className="flex h-full flex-col">
       <div className="border-b border-border px-5 py-4">
         <div className="flex items-start justify-between gap-4 pr-10">
           <div className="min-w-0">
@@ -1260,10 +1222,10 @@ function CellEditorDialog({
           </Button>
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-5">
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto p-5">
         {editable ? (
           isJson ? (
-            <JsonEditor value={draftValue} onChange={onChange} />
+            <JsonEditor fill value={draftValue} onChange={onChange} />
           ) : isBool ? (
             <Select
               value={draftValue === "" ? "false" : draftValue}
@@ -1278,7 +1240,7 @@ function CellEditorDialog({
               autoFocus
               value={draftValue}
               onChange={(e) => onChange(e.target.value)}
-              className="min-h-[55vh] font-mono text-xs leading-6"
+              className="min-h-0 flex-1 resize-none font-mono text-xs leading-6"
             />
           )
         ) : (
