@@ -9,7 +9,8 @@ A lightweight, fast PostgreSQL administration tool similar to Drizzle Studio, bu
 - **Connection pooling:** bounded pools per session (max 5 connections)
 - **Table browser:** search, pagination (10/50/100/500), sort, filter
 - **CRUD with confirmations:** insert, update, delete require explicit approval
-- **Read-only mode:** safe access for production databases
+- **Filters and views:** combine multiple filters, copy them as SQL; sorts and filters are saved automatically as views under each table
+- **Schema picker:** defaults to `public`; filter by tables or views
 - **SQL console:** Monaco editor, query history, execution time, CSV/JSON export
 - **Light and dark themes:** toggle in the header
 - **Safety checks:** destructive SQL detection, query timeouts, result limits
@@ -67,7 +68,6 @@ All authenticated requests send header: `X-Connection-Id: <session-id>`.
 
 - Query timeout (default 30s, configurable)
 - Result limit (default 1000, max 10000)
-- Read-only mode blocks writes
 - Destructive SQL requires confirmation
 - CRUD operations use parameterized queries
 - Tables without primary keys cannot be updated/deleted via UI

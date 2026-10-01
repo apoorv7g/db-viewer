@@ -19,7 +19,6 @@ interface RowFormProps {
   columns: ColumnInfo[];
   initialValues?: Record<string, unknown>;
   onSubmit: (values: Record<string, unknown>) => void;
-  readOnly?: boolean;
   primaryKeys?: string[];
 }
 
@@ -41,7 +40,6 @@ export function RowForm({
   columns,
   initialValues = {},
   onSubmit,
-  readOnly,
   primaryKeys = [],
 }: RowFormProps) {
   const defaultValues = useMemo(
@@ -56,6 +54,7 @@ export function RowForm({
     reset(defaultValues as Record<string, string>);
   }, [defaultValues, reset]);
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- intentional; component opts out of memoization
   const nullFields = watch();
 
   const handleFormSubmit = (data: Record<string, string>) => {
@@ -100,7 +99,7 @@ export function RowForm({
     >
       {columns.map((col) => {
         const isPk = primaryKeys.includes(col.name);
-        const disabled = readOnly || (isPk && Object.keys(initialValues).length > 0);
+        const disabled = (isPk && Object.keys(initialValues).length > 0);
         const isNull = Boolean(nullFields[`${col.name}__null`]);
         const inputDisabled = disabled || isNull;
         const isWideField =

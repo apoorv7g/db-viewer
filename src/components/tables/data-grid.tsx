@@ -556,7 +556,7 @@ export function DataGrid({
           const canPreview = preview.expandable;
 
           return (
-            <div className="group flex max-w-[280px] items-start gap-1">
+            <div className="group flex max-w-70 items-start gap-1">
               <TimeHover value={v} kind={timeKindForColumn(columnMeta)}>
               <div
                 role="button"
@@ -653,6 +653,7 @@ export function DataGrid({
     getColumnMeta,
   ]);
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- intentional; component opts out of memoization
   const table = useReactTable({
     data: dataQuery.data?.rows ?? [],
     columns,

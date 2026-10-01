@@ -22,6 +22,7 @@ interface TableListProps {
 export function TableList({ selected, onSelect }: TableListProps) {
   const [search, setSearch] = useState("");
   const [pickedSchema, setPickedSchema] = useState<string | null>(null);
+  const [kind, setKind] = useState<"all" | "table" | "view">("table");
   const { session } = useConnection();
   const viewScope = `${session?.host ?? ""}:${session?.database ?? ""}`;
   const viewsByTable = useViewsByTable(viewScope);
@@ -48,11 +49,21 @@ export function TableList({ selected, onSelect }: TableListProps) {
       ? pickedSchema
       : (schemas[0] ?? "public");
 
+  const kindCounts = useMemo(() => {
+    const inSchema = (data?.tables ?? []).filter((t) => t.schema === activeSchema);
+    return {
+      all: inSchema.length,
+      table: inSchema.filter((t) => t.type === "table").length,
+      view: inSchema.filter((t) => t.type === "view").length,
+    };
+  }, [data, activeSchema]);
+
   const tables = useMemo(() => {
     const needle = search.trim().toLowerCase();
     const list = (data?.tables ?? []).filter(
       (t) =>
         t.schema === activeSchema &&
+        (kind === "all" || t.type === kind) &&
         (!needle || t.name.toLowerCase().includes(needle))
     );
     return [...list].sort((a, b) => {
@@ -60,7 +71,7 @@ export function TableList({ selected, onSelect }: TableListProps) {
       if (byName !== 0) return byName;
       return a.schema.localeCompare(b.schema);
     });
-  }, [data, search, activeSchema]);
+  }, [data, search, activeSchema, kind]);
 
   return (
     <div className="flex h-full flex-col">
@@ -91,6 +102,38 @@ export function TableList({ selected, onSelect }: TableListProps) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+        </div>
+        <div
+          role="tablist"
+          aria-label="Filter by type"
+          className="flex rounded-md border border-border p-0.5"
+        >
+          {(
+            [
+              { id: "all", label: "All" },
+              { id: "table", label: "Tables" },
+              { id: "view", label: "Views" },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              role="tab"
+              aria-selected={kind === opt.id}
+              onClick={() => setKind(opt.id)}
+              className={cn(
+                "flex h-6 flex-1 items-center justify-center gap-1 rounded text-xs font-medium transition-colors",
+                kind === opt.id
+                  ? "bg-surface-hover text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {opt.label}
+              <span className="tabular-nums text-[10px] text-muted">
+                {kindCounts[opt.id]}
+              </span>
+            </button>
+          ))}
         </div>
       </div>
 

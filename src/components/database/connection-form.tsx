@@ -50,6 +50,7 @@ export function ConnectionForm() {
     },
   });
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- intentional; component opts out of memoization
   const uri = watch("uri");
 
   const onSubmit = async (data: ConnectionInput) => {

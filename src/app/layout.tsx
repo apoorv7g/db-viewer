@@ -13,8 +13,19 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Matches basePath in next.config.ts; static files in /public are served under it.
+const BASE_PATH = "/db-viewer";
+
 export const metadata: Metadata = {
   title: "DB Viewer PostgreSQL Admin",
+  manifest: `${BASE_PATH}/site.webmanifest`,
+  icons: {
+    icon: [
+      { url: `${BASE_PATH}/favicon-32x32.png`, sizes: "32x32", type: "image/png" },
+      { url: `${BASE_PATH}/favicon-16x16.png`, sizes: "16x16", type: "image/png" },
+    ],
+    apple: { url: `${BASE_PATH}/apple-touch-icon.png`, sizes: "180x180" },
+  },
   description:
     "Lightweight PostgreSQL database administration tool built with Next.js",
 };
@@ -53,10 +64,6 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans bg-background text-foreground">
         <Providers>{children}</Providers>
       </body>
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-        <link rel="manifest" href="/site.webmanifest" />
     </html>
   );
 }
