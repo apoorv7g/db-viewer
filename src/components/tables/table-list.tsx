@@ -27,7 +27,7 @@ export function TableList({ selected, onSelect }: TableListProps) {
   const viewScope = `${session?.host ?? ""}:${session?.database ?? ""}`;
   const viewsByTable = useViewsByTable(viewScope);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<{ tables: TableInfo[] }>({
     // Fetch the full list once and filter locally, so typing in the search
     // box is instant instead of a server round trip per keystroke.
     queryKey: ["tables"],
@@ -39,8 +39,10 @@ export function TableList({ selected, onSelect }: TableListProps) {
   // schema's tables are listed (defaults to public) so other schemas'
   // tables/views don't clutter the sidebar.
   const schemas = useMemo(() => {
-    const names = Array.from(new Set((data?.tables ?? []).map((t) => t.schema)));
-    return names.sort((a, b) =>
+    const names: string[] = Array.from(
+      new Set((data?.tables ?? []).map((t: TableInfo) => t.schema))
+    );
+    return names.sort((a: string, b: string) =>
       a === "public" ? -1 : b === "public" ? 1 : a.localeCompare(b)
     );
   }, [data]);
@@ -50,18 +52,20 @@ export function TableList({ selected, onSelect }: TableListProps) {
       : (schemas[0] ?? "public");
 
   const kindCounts = useMemo(() => {
-    const inSchema = (data?.tables ?? []).filter((t) => t.schema === activeSchema);
+    const inSchema = (data?.tables ?? []).filter(
+      (t: TableInfo) => t.schema === activeSchema
+    );
     return {
       all: inSchema.length,
-      table: inSchema.filter((t) => t.type === "table").length,
-      view: inSchema.filter((t) => t.type === "view").length,
+      table: inSchema.filter((t: TableInfo) => t.type === "table").length,
+      view: inSchema.filter((t: TableInfo) => t.type === "view").length,
     };
   }, [data, activeSchema]);
 
   const tables = useMemo(() => {
     const needle = search.trim().toLowerCase();
     const list = (data?.tables ?? []).filter(
-      (t) =>
+      (t: TableInfo) =>
         t.schema === activeSchema &&
         (kind === "all" || t.type === kind) &&
         (!needle || t.name.toLowerCase().includes(needle))
@@ -76,7 +80,7 @@ export function TableList({ selected, onSelect }: TableListProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="shrink-0 space-y-2 px-2 pb-1 pt-1">
-        <div className="studio-section-label !px-0 flex items-center justify-between">
+        <div className="studio-section-label px-0! flex items-center justify-between">
           <span>Tables</span>
           <span className="tabular-nums normal-case tracking-normal">{tables.length}</span>
         </div>
@@ -183,7 +187,7 @@ export function TableList({ selected, onSelect }: TableListProps) {
                   )}
                 </button>
                 {views.length > 0 && (
-                  <ul className="ml-[15px] mt-px space-y-px border-l border-border pl-1.5">
+                  <ul className="ml-3.75 mt-px space-y-px border-l border-border pl-1.5">
                     {views.map((view) => {
                       const viewActive = isSelected && selected?.viewId === view.id;
                       return (
