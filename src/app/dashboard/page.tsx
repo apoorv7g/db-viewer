@@ -19,7 +19,7 @@ import {
   Terminal,
 } from "lucide-react";
 
-type Tab = "data" | "schema" | "sql";
+type Tab = "data" | "schema";
 
 export default function DashboardPage() {
   const { session, connected, isLoading } = useConnection();
@@ -100,7 +100,7 @@ function DashboardContent() {
             setSqlOnly(true);
             setSelectedTable(null);
             setActiveViewId(null);
-            setActiveTab("sql");
+            setActiveTab("data");
           }}
         />
       }
@@ -112,12 +112,11 @@ function DashboardContent() {
               <Table2 className="h-4 w-4 shrink-0 text-muted-foreground" />
               <span className="truncate text-sm font-semibold">{tableLabel}</span>
             </div>
-            <nav className="-mb-px flex gap-1 overflow-x-auto">
+            <nav className="-mb-px flex gap-1">
               {(
                 [
                   { id: "data" as const, label: "Data", icon: Rows3 },
                   { id: "schema" as const, label: "Schema", icon: Columns3 },
-                  { id: "sql" as const, label: "SQL", icon: Terminal },
                 ] as const
               ).map((tab) => (
                 <button
@@ -125,7 +124,6 @@ function DashboardContent() {
                   type="button"
                   onClick={() => {
                     setActiveTab(tab.id);
-                    setSqlOnly(tab.id === "sql");
                   }}
                   data-active={activeTab === tab.id}
                   className="studio-tab shrink-0"
@@ -147,16 +145,11 @@ function DashboardContent() {
               />
             )}
             {activeTab === "schema" && (
-              <div className="h-full overflow-auto p-4">
+              <div className="no-scrollbar h-full overflow-auto p-4">
                 <SchemaViewer
                   tableName={selectedTable.name}
                   schema={selectedTable.schema}
                 />
-              </div>
-            )}
-            {activeTab === "sql" && (
-              <div className="h-full min-h-0">
-                <SqlConsole />
               </div>
             )}
           </div>

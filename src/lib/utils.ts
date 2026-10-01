@@ -132,7 +132,12 @@ export function exportToCsv(
   rows: Record<string, unknown>[]
 ): string {
   const escape = (v: unknown) => {
-    const s = v === null || v === undefined ? "" : String(v);
+    const s =
+      v === null || v === undefined
+        ? ""
+        : typeof v === "object"
+          ? JSON.stringify(v)
+          : String(v);
     if (s.includes(",") || s.includes('"') || s.includes("\n")) {
       return `"${s.replace(/"/g, '""')}"`;
     }

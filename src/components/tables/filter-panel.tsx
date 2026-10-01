@@ -1,6 +1,7 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
+import { Copy, Plus, X } from "lucide-react";
+import toast from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -18,6 +19,8 @@ interface FilterPanelProps {
   onApply: () => void;
   onClear: () => void;
   dirty: boolean;
+  /** Builds the SELECT equivalent to the filters currently in the panel. */
+  buildSql: () => string;
 }
 
 export function FilterPanel({
@@ -27,6 +30,7 @@ export function FilterPanel({
   onApply,
   onClear,
   dirty,
+  buildSql,
 }: FilterPanelProps) {
   const patch = (index: number, change: Partial<TableFilter>) =>
     onChange(filters.map((f, i) => (i === index ? { ...f, ...change } : f)));
@@ -109,6 +113,22 @@ export function FilterPanel({
             Clear all
           </Button>
         )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(buildSql());
+              toast.success("SQL copied");
+            } catch {
+              toast.error("Failed to copy SQL");
+            }
+          }}
+        >
+          <Copy className="h-3.5 w-3.5" />
+          Copy SQL
+        </Button>
       </div>
     </div>
   );

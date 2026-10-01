@@ -64,6 +64,7 @@ import {
   tableKey,
 } from "@/lib/view-store";
 import { FilterPanel } from "@/components/tables/filter-panel";
+import { buildSelectSql } from "@/lib/filter-sql";
 import { filtersEqual, isFilterActive, sanitizeFilters } from "@/lib/filters";
 
 const MAX_DISPLAY_CHARS = 100_000;
@@ -737,6 +738,24 @@ export function DataGrid({
     downloadFile(csv, `${tableName}.csv`, "text/csv");
   };
 
+  const exportSelected = (format: "csv" | "json") => {
+    if (selectedRows.length === 0) return;
+    const cols = dataQuery.data?.columns ?? [];
+    if (format === "csv") {
+      downloadFile(
+        exportToCsv(cols, selectedRows),
+        `${tableName}-selected.csv`,
+        "text/csv"
+      );
+    } else {
+      downloadFile(
+        JSON.stringify(selectedRows, null, 2),
+        `${tableName}-selected.json`,
+        "application/json"
+      );
+    }
+  };
+
   const total = dataQuery.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -847,6 +866,29 @@ export function DataGrid({
             </Button>
           )}
 
+          {selectedRows.length > 0 && (
+            <>
+              <button
+                type="button"
+                className="studio-toolbar-btn"
+                onClick={() => exportSelected("csv")}
+                title={`Download ${selectedRows.length} selected row(s) as CSV`}
+              >
+                <Download className="h-3.5 w-3.5" />
+                CSV ({selectedRows.length})
+              </button>
+              <button
+                type="button"
+                className="studio-toolbar-btn"
+                onClick={() => exportSelected("json")}
+                title={`Download ${selectedRows.length} selected row(s) as JSON`}
+              >
+                <Download className="h-3.5 w-3.5" />
+                JSON ({selectedRows.length})
+              </button>
+            </>
+          )}
+
           <div className="flex-1" />
 
           <span className="text-xs tabular-nums text-muted-foreground">
@@ -933,6 +975,17 @@ export function DataGrid({
             onChange={setDraftFilters}
             onApply={applyFilters}
             onClear={clearFilters}
+            buildSql={() =>
+              buildSelectSql({
+                schema,
+                table: tableName,
+                filters: sanitizeFilters(draftFilters, tableSchemaColumns),
+                sortColumn,
+                sortDirection,
+                limit: pageSize,
+                offset: (page - 1) * pageSize,
+              })
+            }
             dirty={
               !filtersEqual(
                 draftFilters.filter(isFilterActive),
@@ -943,7 +996,7 @@ export function DataGrid({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="no-scrollbar min-h-0 flex-1 overflow-auto">
         <table className="studio-table">
           <thead className="sticky top-0 z-10">
             {table.getHeaderGroups().map((hg) => (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronsUpDown, Database, Loader2 } from "lucide-react";
+import { Check, ChevronsUpDown, Database, Loader2, Search } from "lucide-react";
 import { cn, formatBytes } from "@/lib/utils";
 import { useConnection } from "@/hooks/use-connection";
 import { useConnectionDatabases } from "@/hooks/use-databases";
@@ -10,6 +10,7 @@ import type { DatabaseInfo } from "@/types/database";
 export function DatabaseSwitcher() {
   const { session, switchDatabase, isSwitchingDatabase } = useConnection();
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const { databases, isLoading } = useConnectionDatabases(open, session?.id);
 
@@ -36,6 +37,11 @@ export function DatabaseSwitcher() {
 
   if (!session) return null;
 
+  const needle = search.trim().toLowerCase();
+  const filtered = databases?.filter(
+    (db: DatabaseInfo) => !needle || db.name.toLowerCase().includes(needle)
+  );
+
   const handleSelect = async (name: string) => {
     setOpen(false);
     if (name === session.database) return;
@@ -47,7 +53,10 @@ export function DatabaseSwitcher() {
       <button
         type="button"
         className="flex min-w-0 items-center gap-1 rounded-md border border-transparent px-1.5 py-1 text-[13px] font-medium text-foreground transition-colors hover:border-border hover:bg-surface disabled:pointer-events-none disabled:opacity-60"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          setSearch("");
+          setOpen((o) => !o);
+        }}
         disabled={isSwitchingDatabase}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -64,16 +73,23 @@ export function DatabaseSwitcher() {
 
       {open && (
         <div className="absolute left-0 top-full z-60 mt-1 max-h-64 w-max min-w-64 max-w-96 overflow-y-auto rounded-lg border border-border bg-card p-1.5 shadow-2xl shadow-black/20 dark:shadow-black/60">
-          <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            Switch database
-          </p>
+          <div className="relative px-0.5 pb-1.5 pt-0.5">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search databases"
+              className="h-8 w-full rounded-md border border-border bg-transparent pl-8 pr-2 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:border-primary-fill focus:ring-2 focus:ring-primary-fill/25"
+            />
+          </div>
           {isLoading ? (
             <div className="flex items-center justify-center gap-2 px-2 py-3 text-xs text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Loading databases…
             </div>
-          ) : databases && databases.length > 0 ? (
-            databases.map((db: DatabaseInfo) => {
+          ) : filtered && filtered.length > 0 ? (
+            filtered.map((db: DatabaseInfo) => {
               const isCurrent = db.name === session.database;
               return (
                 <button
@@ -103,7 +119,7 @@ export function DatabaseSwitcher() {
             })
           ) : (
             <p className="px-2 py-3 text-xs text-muted-foreground">
-              No accessible databases found.
+              {needle ? "No databases match your search." : "No accessible databases found."}
             </p>
           )}
         </div>

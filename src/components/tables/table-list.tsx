@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { CornerDownRight, Search, Table2, Eye, Loader2, Inbox, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api-client";
 import type { TableInfo } from "@/types/database";
 import { cn } from "@/lib/utils";
@@ -20,26 +21,46 @@ interface TableListProps {
 
 export function TableList({ selected, onSelect }: TableListProps) {
   const [search, setSearch] = useState("");
+  const [pickedSchema, setPickedSchema] = useState<string | null>(null);
   const { session } = useConnection();
   const viewScope = `${session?.host ?? ""}:${session?.database ?? ""}`;
   const viewsByTable = useViewsByTable(viewScope);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["tables", search],
-    queryFn: () =>
-      apiFetch<{ tables: TableInfo[] }>(
-        `api/tables${search ? `?search=${encodeURIComponent(search)}` : ""}`
-      ),
+    // Fetch the full list once and filter locally, so typing in the search
+    // box is instant instead of a server round trip per keystroke.
+    queryKey: ["tables"],
+    queryFn: () => apiFetch<{ tables: TableInfo[] }>("api/tables"),
+    staleTime: 60_000,
   });
 
+  // Schemas present in this database, "public" first. Only the chosen
+  // schema's tables are listed (defaults to public) so other schemas'
+  // tables/views don't clutter the sidebar.
+  const schemas = useMemo(() => {
+    const names = Array.from(new Set((data?.tables ?? []).map((t) => t.schema)));
+    return names.sort((a, b) =>
+      a === "public" ? -1 : b === "public" ? 1 : a.localeCompare(b)
+    );
+  }, [data]);
+  const activeSchema =
+    pickedSchema && schemas.includes(pickedSchema)
+      ? pickedSchema
+      : (schemas[0] ?? "public");
+
   const tables = useMemo(() => {
-    const list = data?.tables ?? [];
+    const needle = search.trim().toLowerCase();
+    const list = (data?.tables ?? []).filter(
+      (t) =>
+        t.schema === activeSchema &&
+        (!needle || t.name.toLowerCase().includes(needle))
+    );
     return [...list].sort((a, b) => {
       const byName = a.name.localeCompare(b.name);
       if (byName !== 0) return byName;
       return a.schema.localeCompare(b.schema);
     });
-  }, [data]);
+  }, [data, search, activeSchema]);
 
   return (
     <div className="flex h-full flex-col">
@@ -48,6 +69,20 @@ export function TableList({ selected, onSelect }: TableListProps) {
           <span>Tables</span>
           <span className="tabular-nums normal-case tracking-normal">{tables.length}</span>
         </div>
+        {schemas.length > 1 && (
+          <Select
+            value={activeSchema}
+            onChange={(e) => setPickedSchema(e.target.value)}
+            className="text-xs"
+            aria-label="Schema"
+          >
+            {schemas.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </Select>
+        )}
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input

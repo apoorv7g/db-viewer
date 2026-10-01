@@ -50,7 +50,7 @@ export function SchemaViewer({ tableName, schema }: SchemaViewerProps) {
           <code className="font-mono">{data.softDeleteColumn}</code>
         </div>
       )}
-      <div className="overflow-x-auto">
+      <div className="no-scrollbar overflow-x-auto">
         <table className="studio-table w-full">
           <thead>
             <tr className="border-b border-border">
