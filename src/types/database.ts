@@ -55,6 +55,7 @@ export interface QueryResult {
   rows: Record<string, unknown>[];
   fields: { name: string; dataTypeID: number }[];
   rowCount: number;
+  command?: string | null;
   executionTimeMs: number;
   truncated: boolean;
 }

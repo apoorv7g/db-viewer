@@ -15,11 +15,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
     const parsed = querySchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: parsed.error.issues[0]?.message },
+        { error: parsed.error.issues[0]?.message ?? "Invalid request body" },
         { status: 400 }
       );
     }
@@ -44,6 +44,7 @@ export async function POST(request: Request) {
     let rows: Record<string, unknown>[];
     let fields: { name: string; dataTypeID: number }[];
     let rowCount: number;
+    let command: string | null = null;
     let truncated = false;
 
     if (readOnly) {
@@ -56,11 +57,13 @@ export async function POST(request: Request) {
       >[];
       fields = result.fields;
       rowCount = rows.length;
+      command = "SELECT";
     } else {
       const result = await query(connectionId, sql);
       rows = result.rows as Record<string, unknown>[];
       fields = result.fields;
       rowCount = result.rowCount;
+      command = result.command;
       if (rows.length > limit) {
         truncated = true;
         rows = rows.slice(0, limit);
@@ -73,6 +76,7 @@ export async function POST(request: Request) {
       rows,
       fields,
       rowCount,
+      command,
       executionTimeMs,
       truncated,
       readOnly,

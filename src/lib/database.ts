@@ -1,4 +1,9 @@
-import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import {
+  Pool,
+  type PoolClient,
+  type QueryResult as PgQueryResult,
+  type QueryResultRow,
+} from "pg";
 import { randomUUID } from "crypto";
 import type { ConnectionConfig, ConnectionSession, DatabaseInfo } from "@/types/database";
 import { withDatabase } from "@/lib/uri";
@@ -308,16 +313,29 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
   connectionId: string,
   sql: string,
   params?: unknown[]
-): Promise<{ rows: T[]; rowCount: number; fields: { name: string; dataTypeID: number }[] }> {
+): Promise<{
+  rows: T[];
+  rowCount: number;
+  fields: { name: string; dataTypeID: number }[];
+  command: string | null;
+}> {
   return withClient(connectionId, async (client) => {
-    const result = await client.query<T>(sql, params);
+    const raw = (await client.query<T>(sql, params)) as unknown;
+    // Multi-statement SQL makes pg return an array of results; use the last one.
+    const all = (Array.isArray(raw) ? raw : [raw]) as Array<
+      Partial<PgQueryResult<T>> | null | undefined
+    >;
+    const result = all[all.length - 1] ?? {};
+    const rows = Array.isArray(result.rows) ? result.rows : [];
+    const fields = Array.isArray(result.fields) ? result.fields : [];
     return {
-      rows: result.rows,
-      rowCount: result.rowCount ?? result.rows.length,
-      fields: result.fields.map((f) => ({
+      rows,
+      rowCount: result.rowCount ?? rows.length,
+      fields: fields.map((f) => ({
         name: f.name,
         dataTypeID: f.dataTypeID,
       })),
+      command: result.command ?? null,
     };
   });
 }

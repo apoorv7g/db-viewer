@@ -84,11 +84,61 @@ function saveHistory(queries: string[]) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(queries.slice(0, MAX_HISTORY)));
 }
 
-interface QueryResponse extends QueryResult {
+interface QueryResponse extends Partial<QueryResult> {
   requiresConfirmation?: boolean;
   safety?: SqlSafetyAnalysis;
   message?: string;
   readOnly?: boolean;
+  error?: string;
+}
+
+interface PendingConfirmation {
+  sql: string;
+  message?: string;
+  safety?: SqlSafetyAnalysis;
+}
+
+/** Coerce any API response into a fully-populated result so rendering never crashes. */
+function normalizeResult(res: QueryResponse): QueryResult {
+  const rows = Array.isArray(res.rows) ? res.rows : [];
+  const fields = Array.isArray(res.fields)
+    ? res.fields.filter((f) => f && typeof f.name === "string")
+    : [];
+  return {
+    rows,
+    fields,
+    rowCount:
+      typeof res.rowCount === "number" && Number.isFinite(res.rowCount)
+        ? res.rowCount
+        : rows.length,
+    command: res.command ?? null,
+    executionTimeMs:
+      typeof res.executionTimeMs === "number" ? res.executionTimeMs : 0,
+    truncated: Boolean(res.truncated),
+  };
+}
+
+function describeResult(r: QueryResult): string {
+  const time = formatDuration(r.executionTimeMs);
+  if (r.fields.length > 0) {
+    return `${r.rowCount} ${r.rowCount === 1 ? "row" : "rows"} in ${time}`;
+  }
+  const cmd = r.command ?? "Statement";
+  if (["INSERT", "UPDATE", "DELETE", "MERGE"].includes(cmd)) {
+    return `${cmd}: ${r.rowCount} ${r.rowCount === 1 ? "row" : "rows"} affected in ${time}`;
+  }
+  return `${cmd} executed successfully in ${time}`;
+}
+
+function formatCell(value: unknown): string {
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
 }
 
 export function SqlConsole() {
@@ -102,11 +152,11 @@ export function SqlConsole() {
     Math.max(1, Number.parseInt(limitText, 10) || session?.resultLimit || 1000)
   );
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<QueryResponse | null>(null);
+  const [result, setResult] = useState<QueryResult | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingSql, setPendingSql] = useState("");
+  const [pending, setPending] = useState<PendingConfirmation | null>(null);
 
   useEffect(() => {
     const syncFromStorage = () => setHistory(loadHistory());
@@ -116,28 +166,40 @@ export function SqlConsole() {
   }, []);
 
   const runQuery = async (querySql: string, confirmed = false) => {
+    if (!querySql.trim()) {
+      toast.error("Enter a SQL query to run");
+      return;
+    }
     setLoading(true);
     try {
-      const res = await apiFetch<QueryResponse>("api/query", {
+      const res = await apiFetch<QueryResponse | null>("api/query", {
         method: "POST",
         body: JSON.stringify({ sql: querySql, limit, confirmed }),
       });
+      if (!res || typeof res !== "object") {
+        throw new Error("Empty response from server");
+      }
+      if (res.error) {
+        throw new Error(res.error);
+      }
       if (res.requiresConfirmation) {
-        setPendingSql(querySql);
+        setPending({ sql: querySql, message: res.message, safety: res.safety });
         setConfirmOpen(true);
-        setResult(res);
         return;
       }
-      setResult(res);
+      const normalized = normalizeResult(res);
+      setResult(normalized);
       const newHistory = [querySql, ...history.filter((q) => q !== querySql)].slice(
         0,
         MAX_HISTORY
       );
       setHistory(newHistory);
-      saveHistory(newHistory);
-      toast.success(
-        `${res.rowCount} rows in ${formatDuration(res.executionTimeMs)}`
-      );
+      try {
+        saveHistory(newHistory);
+      } catch {
+        // storage full/blocked — history is a convenience only
+      }
+      toast.success(describeResult(normalized));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Query failed");
       setResult(null);
@@ -147,7 +209,7 @@ export function SqlConsole() {
   };
 
   const exportResults = (format: "csv" | "json") => {
-    if (!result?.rows.length) return;
+    if (!result?.rows?.length || !result.fields?.length) return;
     const cols = result.fields.map((f) => f.name);
     if (format === "csv") {
       downloadFile(
@@ -246,7 +308,11 @@ export function SqlConsole() {
       {result && (
         <div className="studio-panel flex min-h-0 flex-1 flex-col">
           <div className="flex flex-wrap items-center gap-2 border-b border-border p-2">
-            <Badge variant="secondary">{result.rowCount} rows</Badge>
+            <Badge variant="secondary">
+              {result.fields.length > 0
+                ? `${result.rowCount} rows`
+                : result.command ?? "OK"}
+            </Badge>
             <Badge variant="outline" className="gap-1 tabular-nums">
               <Clock className="h-3 w-3" />
               {formatDuration(result.executionTimeMs)}
@@ -278,6 +344,11 @@ export function SqlConsole() {
             </Button>
           </div>
           <div className="flex-1 overflow-auto">
+            {result.fields.length === 0 ? (
+              <div className="flex h-full min-h-24 items-center justify-center p-4 text-sm text-muted-foreground">
+                {describeResult(result)}
+              </div>
+            ) : (
             <table className="studio-table w-full">
               <thead className="sticky top-0 z-10">
                 <tr className="border-b border-border">
@@ -299,14 +370,10 @@ export function SqlConsole() {
                         key={f.name}
                         className="max-w-xs truncate font-mono text-xs"
                       >
-                        {row[f.name] === null ? (
+                        {row?.[f.name] === null || row?.[f.name] === undefined ? (
                           <span className="italic text-muted">NULL</span>
                         ) : (
-                          truncateForGrid(
-                            typeof row[f.name] === "object"
-                              ? JSON.stringify(row[f.name])
-                              : String(row[f.name])
-                          )
+                          truncateForGrid(formatCell(row[f.name]))
                         )}
                       </td>
                     ))}
@@ -314,6 +381,7 @@ export function SqlConsole() {
                 ))}
               </tbody>
             </table>
+            )}
           </div>
         </div>
       )}
@@ -323,16 +391,16 @@ export function SqlConsole() {
         onOpenChange={setConfirmOpen}
         title="Confirm SQL execution"
         description={
-          result?.message ??
+          pending?.message ??
           "This query may modify data. Are you sure you want to proceed?"
         }
         variant="destructive"
         confirmLabel="Execute query"
         onConfirm={() => {
           setConfirmOpen(false);
-          runQuery(pendingSql, true);
+          if (pending) runQuery(pending.sql, true);
         }}
-        preview={result?.safety}
+        preview={pending?.safety}
       />
     </div>
   );
